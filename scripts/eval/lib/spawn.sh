@@ -34,7 +34,7 @@ spawn_opencode() {
   done
 
   local max_seconds="${EVAL_MAX_SECONDS:-180}"
-  local model="${EVAL_MODEL:-${OPENCODE_MODEL:-anthropic/claude-haiku-3-5}}"
+  local model="${EVAL_MODEL:-${OPENCODE_MODEL:-anthropic/claude-3-5-haiku-latest}}"
 
   local exit_code=0
   (
