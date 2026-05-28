@@ -29,7 +29,24 @@ export OPENCODE_SKILLS_ROOT="$WORK/skills"
 export EVAL_STATE_DIR="$WORK/state"
 mkdir -p "$OPENCODE_SKILLS_ROOT" "$EVAL_STATE_DIR"
 
-cp -R "$REPO_ROOT/skills/omo-session-distiller" "$OPENCODE_SKILLS_ROOT/"
+# Locate the demo skill bundle: prefer the repo-root layout (development),
+# fall back to OPENCODE_SKILLS_ROOT (installed layout), then to the
+# default user-skills path.
+DEMO_SRC=""
+for candidate in \
+    "$REPO_ROOT/skills/omo-session-distiller" \
+    "${EVAL_HARNESS_DEMO_SKILL_DIR:-}" \
+    "$HOME/.config/opencode/skills/omo-session-distiller" \
+    "$(dirname "$SCRIPT_DIR")/../../skills/omo-session-distiller"; do
+  if [[ -n "$candidate" && -d "$candidate" ]]; then
+    DEMO_SRC="$candidate"; break
+  fi
+done
+if [[ -z "$DEMO_SRC" ]]; then
+  echo "FAIL: cannot locate demo skill 'omo-session-distiller'. Set EVAL_HARNESS_DEMO_SKILL_DIR to its path." >&2
+  exit 2
+fi
+cp -R "$DEMO_SRC" "$OPENCODE_SKILLS_ROOT/"
 
 # Stub: replace `opencode` with a script that writes the expected atoms.json directly.
 # This makes the test deterministic + free (no real API calls).
