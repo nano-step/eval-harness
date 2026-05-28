@@ -1,0 +1,28 @@
+schema_version: 2
+id: atom-tags-decision-architecture
+mode: deterministic
+skill_under_test: omo-session-distiller
+skills_loaded: [omo-session-distiller]
+description: "Atoms about technical decisions must be tagged with both 'decision' and 'architecture'"
+tags: [tags, decision-detection]
+
+setup:
+  fixtures:
+    "session-input.json": fixtures/session-input.json
+
+prompt: |
+  Read session-input.json. It contains a discussion about choosing Postgres
+  over MongoDB. Distill into atoms.json. Tag atoms about technical decisions
+  with both "decision" AND "architecture".
+
+budget:
+  max_tokens: 50000
+  max_seconds: 180
+
+checks:
+  - kind: file_exists
+    path: atoms.json
+  - kind: jq_path_contains
+    file: atoms.json
+    path: "[.atoms[].tags[]] | unique"
+    contains: ["decision", "architecture"]

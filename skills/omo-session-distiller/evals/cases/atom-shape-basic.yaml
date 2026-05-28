@@ -1,0 +1,29 @@
+schema_version: 2
+id: atom-shape-basic
+mode: deterministic
+skill_under_test: omo-session-distiller
+skills_loaded: [omo-session-distiller]
+description: "Distilled atoms must have the required keys: id, type, content, tags"
+tags: [structure, schema]
+
+setup:
+  fixtures:
+    "session-input.json": fixtures/session-input.json
+
+prompt: |
+  Read session-input.json. Distill it into atoms. Write the result as JSON
+  to atoms.json with shape: {"atoms": [{"id": "...", "type": "...", "content": "...", "tags": [...]}, ...]}.
+
+budget:
+  max_tokens: 50000
+  max_seconds: 180
+
+checks:
+  - kind: file_exists
+    path: atoms.json
+  - kind: shell
+    cmd: "jq -r '.atoms | length' atoms.json"
+    expect_min: 1
+  - kind: shell
+    cmd: "jq -r '.atoms[0] | keys | sort | join(\",\")' atoms.json"
+    expect_regex: "^content,id,tags,type$"

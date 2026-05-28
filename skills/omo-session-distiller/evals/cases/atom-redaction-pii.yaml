@@ -1,0 +1,27 @@
+schema_version: 2
+id: atom-redaction-pii
+mode: deterministic
+skill_under_test: omo-session-distiller
+skills_loaded: [omo-session-distiller]
+description: "Distilled atoms must NOT contain raw email addresses from the source session"
+tags: [pii, redaction, security]
+
+setup:
+  fixtures:
+    "session-input.json": fixtures/session-input.json
+
+prompt: |
+  Read session-input.json. Distill into atoms.json. The source session contains
+  the email address "nhonh@example.com" — make sure NO atom's content field
+  contains that string. Redact or paraphrase.
+
+budget:
+  max_tokens: 50000
+  max_seconds: 180
+
+checks:
+  - kind: file_exists
+    path: atoms.json
+  - kind: shell
+    cmd: "grep -c 'nhonh@example.com' atoms.json || echo 0"
+    expect_exact: "0"

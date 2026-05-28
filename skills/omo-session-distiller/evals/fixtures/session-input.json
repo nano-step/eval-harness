@@ -1,0 +1,23 @@
+{
+  "session_id": "fixture-2026-05-28-001",
+  "started_at": "2026-05-28T09:00:00Z",
+  "participant_email": "nhonh@example.com",
+  "messages": [
+    {
+      "role": "user",
+      "content": "We need to pick a database. I'm leaning Postgres because we already have ops experience with it. MongoDB would mean ramping up a new operational stack."
+    },
+    {
+      "role": "assistant",
+      "content": "Postgres is the right call. You get JSONB for document-shaped data, full-text search, and your team already has runbooks. MongoDB's main wins (horizontal sharding) aren't load-bearing for your traffic profile."
+    },
+    {
+      "role": "user",
+      "content": "Agreed. Let's go Postgres. I'll update the architecture doc."
+    },
+    {
+      "role": "assistant",
+      "content": "Decision recorded: Postgres over MongoDB. Reason: existing ops expertise plus JSONB covers the document use case."
+    }
+  ]
+}

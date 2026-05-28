@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# eval-harness git pre-push hook.
+# Settled Decision #3 (v2): pre-push, NOT pre-commit. Fire-rate economics.
+# Triggers eval for skills whose files are part of the push.
+# Sync, 60s timeout, warn-only by default (use `eval-harness promote` to enable blocking).
+
+set -euo pipefail
+
+REMOTE="${1:-origin}"
+URL="${2:-}"
+
+# Read pushed refs from stdin (git pre-push contract)
+affected_skills=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
+    continue
+  fi
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    changed_files="$(git diff --name-only "$local_sha" 2>/dev/null || true)"
+  else
+    changed_files="$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null || true)"
+  fi
+  while IFS= read -r f; do
+    case "$f" in
+      .opencode/skills/*/*|*/.opencode/skills/*/*)
+        skill="$(echo "$f" | grep -oP '\.opencode/skills/\K[^/]+' | head -1 || true)"
+        [[ -n "$skill" ]] && affected_skills+=("$skill")
+        ;;
+    esac
+  done <<< "$changed_files"
+done
+
+if [[ ${#affected_skills[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+unique_skills="$(printf '%s\n' "${affected_skills[@]}" | sort -u)"
+echo "[eval-harness] pre-push: detected skill changes" >&2
+echo "$unique_skills" | sed 's/^/  - /' >&2
+
+EVAL_HARNESS_BIN="${EVAL_HARNESS_BIN:-eval-harness}"
+exit_code=0
+for skill in $unique_skills; do
+  if ! timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push; then
+    exit_code=$?
+  fi
+done
+
+exit "$exit_code"
