@@ -4,6 +4,19 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-29
+
+### Added
+- **LLM judge** — new check kind `llm_judge` for prose-output skills. Calls Anthropic Messages API directly via `curl` with `ANTHROPIC_API_KEY`. Default `claude-sonnet-4-6`; configurable to `claude-opus-4-7` via `EVAL_LLM_JUDGE_MODEL` or per-check `judge_model`. 3-sample majority voting (`samples: N` per check). Returns `verdict: null` with explicit `reason` when API key missing, curl fails, response unparseable, or majority null — never fabricates a verdict. (PR #9)
+- **pr-code-reviewer demo skill** — second skill alongside `omo-session-distiller`. 3 prose cases exercising the `llm_judge` check kind: adversarial SQL injection (must flag), false-positive control trivial rename (must approve), and partial-failure billing risk (must flag). (PR #10)
+- **2-tier mode** — `--mode={smoke|full|2tier}`. `smoke` (cheap haiku + 1 sample) is default. `full` (sonnet-4-6 + 3 samples) is the canonical pass. `2tier` runs smoke first, then re-runs only the FAILED cases with full. Trigger string `2tier-escalation` for history transparency. (PR #11)
+
+### Fixed
+- **`run.sh` SCRIPT_DIR shadowing** — `lib/diff.sh` reassigned the variable on source, breaking sibling-script resolution from `run.sh`. Now uses `RUN_SCRIPT_DIR` for run.sh-owned paths.
+
+### Verified
+- 10 test suites green: all of v0.2.0's 8 + llm_judge_unit + twotier_mode.
+
 ## [0.2.0] — 2026-05-29
 
 ### Added

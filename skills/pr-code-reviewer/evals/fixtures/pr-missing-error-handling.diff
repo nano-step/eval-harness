@@ -1,0 +1,11 @@
+diff --git a/svc/billing.ts b/svc/billing.ts
+index 1111..2222 100644
+--- a/svc/billing.ts
++++ b/svc/billing.ts
+@@ -10,3 +10,7 @@ export async function chargeCard(token: string, amount: number) {
+   return stripe.charges.create({ source: token, amount });
+ }
++
++export async function chargeCardBatch(tokens: string[], amount: number) {
++  return Promise.all(tokens.map(t => stripe.charges.create({ source: t, amount })));
++}

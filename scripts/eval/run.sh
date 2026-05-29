@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB="$SCRIPT_DIR/lib"
+RUN_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB="$RUN_SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
 source "$LIB/skills_root.sh"
 source "$LIB/config.sh"
@@ -20,7 +20,7 @@ source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 
 usage() {
   cat <<EOF
@@ -33,11 +33,19 @@ Options:
   --skill=<name>          Skill to evaluate (looks in \$OPENCODE_SKILLS_ROOT)
   --case=<id>             Run only this case (default: all cases for skill)
   --trigger=<name>        Tag the run (manual|pre-push|sync-publish)
+  --mode=<smoke|full|2tier>  smoke=cheap+samples=1, full=configured+samples=3,
+                             2tier=smoke first, escalate to full on FAIL (default smoke)
   --debug                 Verbose log + keep sandbox dirs
   --pin-env=baseline      Re-run with baseline's env-manifest pinned
   --stability-samples=N   On FAIL re-run case N-1 more times; record byte-identicity (default 1)
   --dry-run               Print plan; don't spawn opencode
   -h, --help              Show this help
+
+2-tier defaults (override via env):
+  EVAL_SMOKE_MODEL        anthropic/claude-3-5-haiku-latest
+  EVAL_FULL_MODEL         \$EVAL_MODEL or anthropic/claude-sonnet-4-6
+  EVAL_SMOKE_SAMPLES      1
+  EVAL_FULL_SAMPLES       3
 
 Environment:
   OPENCODE_SKILLS_ROOT     Override skills root. If unset: walks up from cwd
@@ -60,6 +68,7 @@ TRIGGER="manual"
 DEBUG=0
 DRY_RUN=0
 PIN_ENV=""
+MODE="${EVAL_MODE:-smoke}"
 STABILITY_SAMPLES="${EVAL_STABILITY_SAMPLES:-1}"
 
 for arg in "$@"; do
@@ -67,6 +76,7 @@ for arg in "$@"; do
     --skill=*)               SKILL="${arg#*=}" ;;
     --case=*)                CASE_ID="${arg#*=}" ;;
     --trigger=*)             TRIGGER="${arg#*=}" ;;
+    --mode=*)                MODE="${arg#*=}" ;;
     --debug)                 DEBUG=1 ;;
     --dry-run)               DRY_RUN=1 ;;
     --pin-env=*)             PIN_ENV="${arg#*=}" ;;
@@ -77,10 +87,29 @@ for arg in "$@"; do
   esac
 done
 
+case "$MODE" in
+  smoke|full|2tier) ;;
+  *) echo "[eval-harness] invalid --mode='$MODE' (smoke|full|2tier)" >&2; exit 2 ;;
+esac
+
 if ! [[ "$STABILITY_SAMPLES" =~ ^[1-9][0-9]*$ ]]; then
   echo "[eval-harness] invalid --stability-samples='$STABILITY_SAMPLES' (must be positive integer)" >&2
   exit 2
 fi
+
+apply_mode_defaults() {
+  local mode="$1"
+  case "$mode" in
+    smoke)
+      export EVAL_MODEL="${EVAL_SMOKE_MODEL:-anthropic/claude-3-5-haiku-latest}"
+      export EVAL_LLM_JUDGE_SAMPLES="${EVAL_SMOKE_SAMPLES:-1}"
+      ;;
+    full)
+      export EVAL_MODEL="${EVAL_FULL_MODEL:-${EVAL_MODEL:-anthropic/claude-sonnet-4-6}}"
+      export EVAL_LLM_JUDGE_SAMPLES="${EVAL_FULL_SAMPLES:-3}"
+      ;;
+  esac
+}
 
 if [[ -z "$SKILL" ]]; then
   echo "error: --skill=<name> is required" >&2
@@ -96,6 +125,14 @@ if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
 fi
 
 apply_project_config
+
+if [[ "$MODE" == "2tier" ]]; then
+  exec bash "$RUN_SCRIPT_DIR/twotier.sh" "$@"
+fi
+
+if [[ "$MODE" == "smoke" || "$MODE" == "full" ]]; then
+  apply_mode_defaults "$MODE"
+fi
 
 case "$TRIGGER" in
   pre-push|sync-publish|stop-hook)

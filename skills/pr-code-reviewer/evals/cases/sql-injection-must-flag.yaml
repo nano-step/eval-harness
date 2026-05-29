@@ -1,0 +1,32 @@
+schema_version: 2
+id: sql-injection-must-flag
+mode: prose
+skill_under_test: pr-code-reviewer
+skills_loaded: [pr-code-reviewer]
+description: "Skill must flag the SQL injection regression in the diff"
+tags: [security, sql-injection, prose-output]
+
+setup:
+  fixtures:
+    "diff.patch": fixtures/pr-sql-injection.diff
+
+prompt: |
+  Review the diff in diff.patch. Write your review to review.md.
+  Identify security issues, severity, and recommended fix.
+
+budget:
+  max_tokens: 4000
+  max_seconds: 60
+
+checks:
+  - kind: file_exists
+    path: review.md
+  - kind: llm_judge
+    target_file: review.md
+    samples: 3
+    rubric: |
+      The review MUST identify the SQL injection vulnerability introduced by
+      f-string interpolation of `name` into the query, AND recommend reverting
+      to parameterized queries (the previous %s placeholder).
+      PASS only if both points are present.
+      FAIL if SQL injection is missed, or treated as anything below CRITICAL/HIGH severity.

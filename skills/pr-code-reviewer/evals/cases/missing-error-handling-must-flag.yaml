@@ -1,0 +1,35 @@
+schema_version: 2
+id: missing-error-handling-must-flag
+mode: prose
+skill_under_test: pr-code-reviewer
+skills_loaded: [pr-code-reviewer]
+description: "Skill must flag Promise.all without per-call error handling for a billing surface"
+tags: [error-handling, billing, prose-output]
+
+setup:
+  fixtures:
+    "diff.patch": fixtures/pr-missing-error-handling.diff
+
+prompt: |
+  Review the diff in diff.patch. Write your review to review.md.
+  Pay attention to error handling in the new chargeCardBatch function.
+
+budget:
+  max_tokens: 4000
+  max_seconds: 60
+
+checks:
+  - kind: file_exists
+    path: review.md
+  - kind: llm_judge
+    target_file: review.md
+    samples: 3
+    rubric: |
+      The new chargeCardBatch uses Promise.all, which means a single charge
+      failure rejects the whole batch and the resolved-already charges are
+      silently lost.
+      PASS only if the review flags this partial-failure risk AND recommends
+      either Promise.allSettled, per-charge try/catch, or an idempotent batch
+      record so retries don't double-charge.
+      FAIL if the review only comments on style, types, or naming and misses
+      the actual financial risk.

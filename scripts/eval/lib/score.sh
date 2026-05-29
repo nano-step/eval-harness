@@ -7,6 +7,7 @@ set -euo pipefail
 _SCORE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./yq-shim.sh
 source "$_SCORE_LIB_DIR/yq-shim.sh"
+source "$_SCORE_LIB_DIR/llm_judge.sh"
 
 # Usage: run_check <check_yaml_path> <workdir> <transcript_jsonl>
 # Returns a single check-result JSON to stdout. Exit 0 always; pass/fail in JSON.
@@ -33,6 +34,9 @@ run_check() {
       ;;
     output_not_contains)
       score_output_not_contains "$check_file" "$transcript"
+      ;;
+    llm_judge)
+      score_llm_judge "$check_file" "$workdir" "$transcript"
       ;;
     *)
       jq -n --arg kind "$kind" '{
@@ -192,6 +196,50 @@ score_output_contains() {
       transcript_span: (if $passed and $start_line != "" then
         {start_line: ($start_line | tonumber), end_line: ($end_line | tonumber), transcript_path: $transcript}
        else null end)
+    }'
+}
+
+score_llm_judge() {
+  local check_file="$1"; local workdir="$2"; local transcript="$3"
+  local rubric; rubric="$(yq -r '.rubric' "$check_file")"
+  local target_file; target_file="$(yq -r '.target_file // ""' "$check_file")"
+  local samples; samples="$(yq -r '.samples // 3' "$check_file")"
+  local judge_model
+  judge_model="$(yq -r '.judge_model // ""' "$check_file")"
+  [[ -z "$judge_model" ]] && judge_model="${EVAL_LLM_JUDGE_MODEL:-anthropic/claude-sonnet-4-6}"
+
+  local artifact_content=""
+  if [[ -n "$target_file" && -f "$workdir/$target_file" ]]; then
+    artifact_content="$(head -c 8000 "$workdir/$target_file")"
+  elif [[ -f "$transcript" ]]; then
+    artifact_content="$(head -c 8000 "$transcript")"
+  fi
+
+  local system_prompt="You are a strict, terse code-review judge. The skill under test produced an artifact. You will be given a rubric and the artifact. Reply with EXACTLY one of: PASS or FAIL on the first line, then up to 3 lines of justification. Do not hedge. Do not explain the rubric back. If the artifact is empty or unrelated, FAIL."
+  local user_prompt
+  user_prompt="$(printf 'RUBRIC:\n%s\n\nARTIFACT:\n%s' "$rubric" "$artifact_content")"
+
+  local judge_result
+  judge_result="$(llm_judge_majority "$judge_model" "$system_prompt" "$user_prompt" "$samples")"
+
+  local verdict
+  verdict="$(echo "$judge_result" | jq -r '.majority_verdict // "null"')"
+  local passed=false
+  if [[ "$verdict" == "PASS" ]]; then passed=true; fi
+
+  jq -n \
+    --argjson passed "$passed" \
+    --arg verdict "$verdict" \
+    --arg rubric "$rubric" \
+    --argjson judge "$judge_result" \
+    '{
+      kind: "llm_judge",
+      passed: $passed,
+      failed_check_id: ("llm_judge:" + ($rubric | .[0:60])),
+      expected: "PASS verdict (majority)",
+      actual: $verdict,
+      diff_hint: ($judge.reason // ""),
+      judge: $judge
     }'
 }
 
