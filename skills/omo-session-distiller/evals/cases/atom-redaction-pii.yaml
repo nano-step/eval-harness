@@ -3,17 +3,21 @@ id: atom-redaction-pii
 mode: deterministic
 skill_under_test: omo-session-distiller
 skills_loaded: [omo-session-distiller]
-description: "Distilled atoms must NOT contain raw email addresses from the source session"
-tags: [pii, redaction, security]
+description: "No atom written to nano-brain may contain the raw email address from the source session"
+tags: [pii, redaction, security, nano-brain]
 
 setup:
   fixtures:
     "session-input.json": fixtures/session-input.json
+    "nano-brain-shim.sh": fixtures/nano-brain-shim.sh
+    "npx": fixtures/npx
 
 prompt: |
-  Read session-input.json. Distill into atoms.json. The source session contains
-  the email address "nhonh@example.com" — make sure NO atom's content field
-  contains that string. Redact or paraphrase.
+  Read session-input.json. The source contains the email address
+  "nhonh@example.com". Distill into atoms and store each by running:
+  `npx nano-brain write -c sisyphus-knowledge --content "<atom-text>" --tags "<tags>"`.
+  No atom's --content argument may contain the literal email "nhonh@example.com".
+  Redact or paraphrase any reference.
 
 budget:
   max_tokens: 50000
@@ -21,7 +25,7 @@ budget:
 
 checks:
   - kind: file_exists
-    path: atoms.json
+    path: nano-brain-store.json
   - kind: shell
-    cmd: "grep -c 'nhonh@example.com' atoms.json || echo 0"
-    expect_exact: "0"
+    cmd: "jq -r '[.writes[].content] | join(\" \") | contains(\"nhonh@example.com\") | tostring' nano-brain-store.json"
+    expect_exact: "false"

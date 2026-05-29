@@ -8,6 +8,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
+source "$LIB/skills_root.sh"
+source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
 source "$LIB/score.sh"
@@ -33,7 +35,8 @@ Options:
   -h, --help           Show this help
 
 Environment:
-  OPENCODE_SKILLS_ROOT     Default: \$HOME/.config/opencode/skills
+  OPENCODE_SKILLS_ROOT     Override skills root. If unset: walks up from cwd
+                           for .opencode/skills/, else \$HOME/.config/opencode/skills
   EVAL_BUDGET_USD          Daily hard cap (default: 2.00)
   EVAL_MAX_SECONDS         Per-case timeout (default: 180)
   EVAL_MODEL               Override model (default: anthropic/claude-haiku-3-5)
@@ -80,7 +83,11 @@ if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
   exit 0
 fi
 
-SKILLS_ROOT="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+if ! preflight_check; then
+  exit 13
+fi
+
+SKILLS_ROOT="$(resolve_skills_root)"
 SKILL_DIR="$SKILLS_ROOT/$SKILL"
 EVALS_DIR="$SKILL_DIR/evals"
 CASES_DIR="$EVALS_DIR/cases"

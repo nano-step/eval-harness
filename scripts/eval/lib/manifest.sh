@@ -5,12 +5,17 @@
 
 set -euo pipefail
 
+if ! declare -F resolve_skills_root >/dev/null; then
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/skills_root.sh"
+fi
+
 # Usage: capture_manifest <skill_under_test> <output_path>
 # Writes a JSON manifest to <output_path>
 capture_manifest() {
   local skill="$1"
   local out="$2"
-  local skills_root="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+  local skills_root
+  skills_root="$(resolve_skills_root)"
   local skill_dir="$skills_root/$skill"
 
   local opencode_version

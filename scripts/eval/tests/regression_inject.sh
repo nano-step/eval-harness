@@ -27,6 +27,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 export OPENCODE_SKILLS_ROOT="$WORK/skills"
 export EVAL_STATE_DIR="$WORK/state"
+export EVAL_SKIP_AUTH_CHECK=1
 mkdir -p "$OPENCODE_SKILLS_ROOT" "$EVAL_STATE_DIR"
 
 # Locate the demo skill bundle: prefer the repo-root layout (development),
@@ -71,22 +72,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 mode="${EVAL_STUB_MODE:-pass}"
+cd "$cwd"
+export PATH="$cwd:$PATH"
+export NANO_BRAIN_SHIM_STORE="$cwd/nano-brain-store.json"
+
 case "$mode" in
   pass)
-    cat > "$cwd/atoms.json" <<'JSON'
-{"atoms":[
-  {"content":"Picked Postgres over MongoDB due to existing ops experience","id":"a-1","tags":["decision","architecture","database"],"type":"decision"},
-  {"content":"Team already has Postgres runbooks","id":"a-2","tags":["ops","architecture"],"type":"learning"}
-]}
-JSON
+    npx nano-brain write -c sisyphus-knowledge \
+      --content "Picked Postgres over MongoDB due to existing ops experience" \
+      --tags "decision,architecture,database" >/dev/null
+    npx nano-brain write -c sisyphus-knowledge \
+      --content "Team already has Postgres runbooks" \
+      --tags "ops,architecture" >/dev/null
     ;;
   regress)
-    cat > "$cwd/atoms.json" <<'JSON'
-{"atoms":[
-  {"content":"Picked Postgres over MongoDB due to existing ops experience","id":"a-1","tags":["decision","database"],"type":"decision"},
-  {"content":"Team already has Postgres runbooks","id":"a-2","tags":["ops"],"type":"learning"}
-]}
-JSON
+    npx nano-brain write -c sisyphus-knowledge \
+      --content "Picked Postgres over MongoDB due to existing ops experience" \
+      --tags "decision,database" >/dev/null
+    npx nano-brain write -c sisyphus-knowledge \
+      --content "Team already has Postgres runbooks" \
+      --tags "ops" >/dev/null
     ;;
 esac
 
@@ -190,7 +195,7 @@ fi
 echo
 echo "================================================================"
 if [[ "$ok" == "1" ]]; then
-  echo "ALL ASSERTIONS PASSED — eval-harness v0.1.0 demo is real."
+  echo "ALL ASSERTIONS PASSED — eval-harness regression demo green."
   exit 0
 else
   echo "DEMO FAILED — see output above"

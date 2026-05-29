@@ -10,6 +10,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if ! declare -F resolve_skills_root >/dev/null; then
+  source "$SCRIPT_DIR/skills_root.sh"
+fi
+
 # Usage: spawn_opencode <prompt> <workdir> <sandbox_dir> <transcript_out> [skills_to_load...]
 # - prompt: the user message string
 # - workdir: cwd for the opencode run (case fixtures already materialized here)
@@ -26,7 +30,8 @@ spawn_opencode() {
 
   mkdir -p "$sandbox/home" "$sandbox/opencode/skills" "$sandbox/nano-brain"
 
-  local real_skills_root="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+  local real_skills_root
+  real_skills_root="$(resolve_skills_root)"
   for skill in "${skills_to_load[@]}"; do
     if [[ -d "$real_skills_root/$skill" ]]; then
       cp -R "$real_skills_root/$skill" "$sandbox/opencode/skills/$skill"
@@ -43,6 +48,7 @@ spawn_opencode() {
     export NANO_BRAIN_ROOT="$sandbox/nano-brain"
     export OPENCODE_EVAL_MODE=1
     export EVAL_HARNESS_RUNNING=1
+    export PATH="$workdir:$PATH"
     cd "$workdir"
     timeout "$max_seconds" opencode run \
       --model "$model" \

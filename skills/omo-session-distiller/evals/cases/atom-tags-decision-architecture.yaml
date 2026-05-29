@@ -4,16 +4,20 @@ mode: deterministic
 skill_under_test: omo-session-distiller
 skills_loaded: [omo-session-distiller]
 description: "Atoms about technical decisions must be tagged with both 'decision' and 'architecture'"
-tags: [tags, decision-detection]
+tags: [tags, decision-detection, nano-brain]
 
 setup:
   fixtures:
     "session-input.json": fixtures/session-input.json
+    "nano-brain-shim.sh": fixtures/nano-brain-shim.sh
+    "npx": fixtures/npx
 
 prompt: |
   Read session-input.json. It contains a discussion about choosing Postgres
-  over MongoDB. Distill into atoms.json. Tag atoms about technical decisions
-  with both "decision" AND "architecture".
+  over MongoDB. Store each distilled atom by running:
+  `npx nano-brain write -c sisyphus-knowledge --content "<atom-text>" --tags "<csv-tags>"`.
+  Atoms about technical decisions must include both "decision" AND "architecture"
+  in the --tags csv.
 
 budget:
   max_tokens: 50000
@@ -21,8 +25,8 @@ budget:
 
 checks:
   - kind: file_exists
-    path: atoms.json
+    path: nano-brain-store.json
   - kind: jq_path_contains
-    file: atoms.json
-    path: "[.atoms[].tags[]] | unique"
+    file: nano-brain-store.json
+    path: "[.writes[].tags[]] | unique"
     contains: ["decision", "architecture"]
