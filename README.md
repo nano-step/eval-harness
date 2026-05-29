@@ -1,7 +1,7 @@
 # @nano-step/eval-harness
 
-**v0.3.0** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
-> v0.3.0 adds: `llm_judge` check kind for prose-output skills (claude-sonnet-4-6 / opus-4-7, 3-sample majority), `pr-code-reviewer` as second demo skill, and `--mode=2tier` (smoke auto-escalates to full on FAIL). See `CHANGELOG.md`.
+**v0.4.0** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
+> v0.4.0 adds heuristic **auto-fix proposer** for safe check kinds (literal strings, missing files, missing path values). FAILED check results now carry a `.fix_proposal` field with `instruction` + `patch_snippet`. See `CHANGELOG.md`.
 
 > Scope statement: v0.1.0 measures **behavior regression** for **structured-output skills**. It is NOT a skill reviewer, NOT a quality grader, NOT a general-purpose evaluator. Prose-output skills (`pr-code-reviewer`, `od-workflow`, …) are deferred to v0.3 (LLM judge).
 
