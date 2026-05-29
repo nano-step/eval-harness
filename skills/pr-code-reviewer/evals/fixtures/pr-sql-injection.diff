@@ -1,0 +1,12 @@
+diff --git a/api/users.py b/api/users.py
+index abc1234..def5678 100644
+--- a/api/users.py
++++ b/api/users.py
+@@ -10,7 +10,9 @@ def get_user_by_name(conn, name):
+-    cursor = conn.cursor()
+-    cursor.execute("SELECT id, email FROM users WHERE name = %s", (name,))
+-    return cursor.fetchone()
++    cursor = conn.cursor()
++    query = f"SELECT id, email FROM users WHERE name = '{name}'"
++    cursor.execute(query)
++    return cursor.fetchone()

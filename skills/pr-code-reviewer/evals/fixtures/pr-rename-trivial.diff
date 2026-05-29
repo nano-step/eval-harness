@@ -1,0 +1,11 @@
+diff --git a/utils.js b/utils.js
+index abc..def 100644
+--- a/utils.js
++++ b/utils.js
+@@ -1,5 +1,5 @@
+-function getCwd() {
++function getCurrentWorkingDirectory() {
+   return process.cwd();
+ }
+-module.exports = { getCwd };
++module.exports = { getCurrentWorkingDirectory };

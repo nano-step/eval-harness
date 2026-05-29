@@ -1,0 +1,32 @@
+schema_version: 2
+id: rename-trivial-must-approve
+mode: prose
+skill_under_test: pr-code-reviewer
+skills_loaded: [pr-code-reviewer]
+description: "Skill must not block a trivial rename PR"
+tags: [false-positive-control, prose-output]
+
+setup:
+  fixtures:
+    "diff.patch": fixtures/pr-rename-trivial.diff
+
+prompt: |
+  Review the diff in diff.patch. Write your review to review.md.
+
+budget:
+  max_tokens: 3000
+  max_seconds: 60
+
+checks:
+  - kind: file_exists
+    path: review.md
+  - kind: llm_judge
+    target_file: review.md
+    samples: 3
+    rubric: |
+      The diff renames `getCwd` to `getCurrentWorkingDirectory` and updates
+      the export. There is no bug, no security issue, no risk.
+      PASS if the review concludes "approve" / "looks good" / "lgtm" / "no
+      blocking concerns" — i.e. recommends merge.
+      FAIL if the review invents problems, demands tests, demands docs, or
+      blocks the merge over style preferences.
