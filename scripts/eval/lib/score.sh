@@ -8,6 +8,7 @@ _SCORE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./yq-shim.sh
 source "$_SCORE_LIB_DIR/yq-shim.sh"
 source "$_SCORE_LIB_DIR/llm_judge.sh"
+source "$_SCORE_LIB_DIR/autofix.sh"
 
 # Usage: run_check <check_yaml_path> <workdir> <transcript_jsonl>
 # Returns a single check-result JSON to stdout. Exit 0 always; pass/fail in JSON.
@@ -289,6 +290,9 @@ run_all_checks() {
     local tmp; tmp="$(mktemp)"
     yq -o=yaml ".checks[$i]" "$case_file" > "$tmp"
     local res; res="$(run_check "$tmp" "$workdir" "$transcript")"
+    if [[ "${EVAL_AUTOFIX:-1}" == "1" ]]; then
+      res="$(propose_fix "$res")"
+    fi
     results+=("$res")
     rm -f "$tmp"
     i=$((i+1))
