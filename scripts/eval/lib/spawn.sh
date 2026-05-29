@@ -20,6 +20,12 @@ fi
 # - sandbox_dir: parent for ephemeral HOME / OPENCODE_CONFIG_DIR / NANO_BRAIN_ROOT
 # - transcript_out: path to write the JSON-formatted transcript
 # - skills_to_load: skill names to materialize into ephemeral OPENCODE_CONFIG_DIR
+#
+# Model resolution order (highest precedence first):
+#   1. EVAL_CASE_MODEL          — set by run.sh from case YAML `.model`
+#   2. EVAL_MODEL               — user/CI override
+#   3. OPENCODE_MODEL           — opencode global default
+#   4. anthropic/claude-3-5-haiku-latest — hard-coded fallback
 spawn_opencode() {
   local prompt="$1"
   local workdir="$2"
@@ -39,7 +45,7 @@ spawn_opencode() {
   done
 
   local max_seconds="${EVAL_MAX_SECONDS:-180}"
-  local model="${EVAL_MODEL:-${OPENCODE_MODEL:-anthropic/claude-3-5-haiku-latest}}"
+  local model="${EVAL_CASE_MODEL:-${EVAL_MODEL:-${OPENCODE_MODEL:-anthropic/claude-3-5-haiku-latest}}}"
 
   local exit_code=0
   (

@@ -27,7 +27,7 @@ capture_manifest() {
   local platform
   platform="$(uname -s)-$(uname -m)"
 
-  local model_id="${EVAL_MODEL:-${OPENCODE_MODEL:-unknown}}"
+  local model_id="${EVAL_CASE_MODEL:-${EVAL_MODEL:-${OPENCODE_MODEL:-unknown}}}"
 
   # Skill bundle sha: hash the entire .opencode/skills/ tree (transitive, per Settled #14).
   # This catches cross-skill regressions where editing skill B silently affects skill A.

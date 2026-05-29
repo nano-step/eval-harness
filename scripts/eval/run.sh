@@ -143,6 +143,13 @@ for case_file in "${CASE_FILES[@]}"; do
   mapfile -t skills_loaded < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
   [[ ${#skills_loaded[@]} -eq 0 ]] && skills_loaded=("$SKILL")
 
+  case_model="$(yq -r '.model // ""' "$case_file" 2>/dev/null || echo "")"
+  if [[ -n "$case_model" ]]; then
+    export EVAL_CASE_MODEL="$case_model"
+  else
+    unset EVAL_CASE_MODEL
+  fi
+
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "[eval-harness] [dry-run] case $i/${#CASE_FILES[@]} $cid"
     continue
