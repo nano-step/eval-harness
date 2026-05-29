@@ -11,6 +11,7 @@ source "$LIB/yq-shim.sh"
 source "$LIB/skills_root.sh"
 source "$LIB/config.sh"
 source "$LIB/registry.sh"
+source "$LIB/lock.sh"
 source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
@@ -188,11 +189,37 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
   done
 
-  # Capture env-manifest BEFORE spawn (skill_bundle_sha reflects pre-run state)
   export EVAL_FIXTURE_DIR="$FIXTURES_DIR"
-  capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
-
   transcript="$per_case_dir/transcript.jsonl"
+
+  lock_dir="$STATE_DIR/locks"
+  mkdir -p "$lock_dir"
+  lock_key="$(printf '%s' "$SKILL:$cid:$TRIGGER" | tr '/ ' '__')"
+  lock_file="$lock_dir/$lock_key.lock"
+  lock_timeout="${EVAL_LOCK_TIMEOUT:-300}"
+
+  exec 9>"$lock_file"
+  if command -v flock >/dev/null 2>&1; then
+    if ! flock -w "$lock_timeout" -x 9; then
+      echo "[eval-harness] lock timeout (${lock_timeout}s) on $SKILL:$cid:$TRIGGER — another run holds it" >&2
+      exec 9>&-
+      continue
+    fi
+  else
+    mkdir_lock="${lock_file}.d"
+    waited=0
+    while ! mkdir "$mkdir_lock" 2>/dev/null; do
+      if [[ "$waited" -ge "$lock_timeout" ]]; then
+        echo "[eval-harness] mkdir-lock timeout (${lock_timeout}s) on $SKILL:$cid:$TRIGGER" >&2
+        exec 9>&-
+        continue 2
+      fi
+      sleep 1
+      waited=$((waited+1))
+    done
+  fi
+
+  capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
 
   if command -v opencode >/dev/null 2>&1; then
     exit_code="$(spawn_opencode "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}")"
@@ -202,8 +229,12 @@ for case_file in "${CASE_FILES[@]}"; do
     exit_code=0
   fi
 
-  # Score: run ALL checks (Settled Decision #18)
   run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
+
+  if ! command -v flock >/dev/null 2>&1; then
+    rmdir "${lock_file}.d" 2>/dev/null || true
+  fi
+  exec 9>&-
 
   baseline_path="$BASELINES_DIR/$cid.baseline.json"
   case_result="$(SKILL_UNDER_TEST="$SKILL" build_case_result "$cid" "$per_case_dir" "$baseline_path")"
