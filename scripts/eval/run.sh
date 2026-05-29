@@ -18,6 +18,7 @@ source "$LIB/spawn.sh"
 source "$LIB/score.sh"
 source "$LIB/diff.sh"
 source "$LIB/stability.sh"
+source "$LIB/pricing.sh"
 
 VERSION="0.1.0"
 
@@ -143,6 +144,21 @@ fi
 
 echo "[eval-harness] v$VERSION trigger=$TRIGGER skill=$SKILL cases=${#CASE_FILES[@]}"
 echo "[eval-harness] run_id=$RUN_ID"
+
+PRICING_STALENESS="$(pricing_staleness_check)"
+PRICING_STATUS="$(echo "$PRICING_STALENESS" | jq -r '.status')"
+case "$PRICING_STATUS" in
+  STALE)
+    echo "[eval-harness] WARN: $(echo "$PRICING_STALENESS" | jq -r '.message')" >&2
+    if [[ "${EVAL_FAIL_ON_STALE_PRICING:-0}" == "1" ]]; then
+      echo "[eval-harness] EVAL_FAIL_ON_STALE_PRICING=1 — refusing to run" >&2
+      exit 13
+    fi
+    ;;
+  MISSING|INVALID)
+    echo "[eval-harness] note: pricing data $PRICING_STATUS — cost data will be null" >&2
+    ;;
+esac
 
 case_results=()
 i=0
