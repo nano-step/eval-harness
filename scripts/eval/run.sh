@@ -20,7 +20,7 @@ source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 usage() {
   cat <<EOF

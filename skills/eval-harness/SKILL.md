@@ -2,7 +2,7 @@
 name: eval-harness
 description: Detects behavior regressions in opencode skills by running structured eval cases and comparing against committed baselines. Use whenever you say "run evals", "check regression", "baseline this skill", "did my skill regress", "did this prompt regress", "A/B these two skills" — or after editing any skill in `.opencode/skills/**`. Wires into `sync-skill-to-manager` as a pre-publish gate (opt-in per skill via `skill.yaml: evals.required`). Ships 4-class attribution (SKILL_CHANGED / FIXTURE_STALE / MODEL_CHANGED / UNKNOWN_DRIFT), 6-field FAIL diagnostics (failed_check_id, expected, actual, diff_hint, transcript_span, env_delta), and a one-command rerun affordance on every failure. v0.1.0 scope: structured-output skills only — prose-output skills (pr-code-reviewer, od-workflow, blog-workflow, idea-workflow) are deferred to v0.3 LLM-judge.
 compatibility: opencode 1.15.10+
-version: 0.1.0
+version: 0.2.0
 ---
 
 # eval-harness
@@ -23,7 +23,7 @@ Also fires automatically via:
 - `git pre-push` hook (when commits touch `.opencode/skills/**`)
 - `sync-skill-to-manager` pre-publish hook (if skill opted in via `skill.yaml: evals.required: true`)
 
-## What it does (v0.1.0)
+## What it does (v0.2.0)
 
 Given a baselined skill, eval-harness:
 1. Runs each case in a fully-sandboxed ephemeral environment (fresh `HOME`, `OPENCODE_CONFIG_DIR`, `NANO_BRAIN_ROOT`, cwd).
@@ -104,7 +104,7 @@ EVAL_BYPASS=1 git push origin main
 3. opencode 1.15.10 lacks `--max-turns` / `--skills` / `--prompt-file` flags. Compensated via `timeout(1)` + ephemeral `OPENCODE_CONFIG_DIR`.
 4. Real network calls disabled by default. `--realenv` flag for opt-in quarantined cases.
 5. Single-tier (no smoke/full); 2-tier deferred to v0.2 when LLM judge enters.
-6. No Stop-hook trigger in v0.1.0; pending verification of opencode plugin API.
+6. opencode Stop hook ships as a SCAFFOLD in v0.2.0 — active only on opencode ≥ 1.16 plugin API. Until then, see `scripts/eval/hooks/HOOKS.md` for manual invocation.
 
 ## See also
 
