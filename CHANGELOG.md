@@ -4,6 +4,25 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-29
+
+### Added
+- **Per-case model override** — case YAML `.model` field. Resolution: case YAML > `EVAL_MODEL` > `OPENCODE_MODEL` > built-in default. Recorded in env-manifest so MODEL_CHANGED attribution fires correctly. (PR #1)
+- **Project-config layer** — `.opencode/eval-harness.yaml` walked up from cwd. Settings: `model`, `budget_usd`, `max_seconds`, `skills_root`, `llm_judge.model`. Env vars win when explicitly set. (PR #2)
+- **opencode Stop hook scaffold** — `scripts/eval/hooks/opencode-stop.sh` parses `OPENCODE_CHANGED_FILES` and re-runs evals for touched skills. Gated on `opencode >= 1.16` (no-op until plugin API stabilizes). (PR #3)
+- **Per-repo opt-in registry** — `scripts/eval/lib/registry.sh` manages `~/.config/opencode/eval-harness/registry.yaml`. Automated triggers (pre-push, sync-publish, stop-hook) skip when current repo isn't enabled. Required for 43-repo workspace support. (PR #4)
+- **Per-(case,trigger) lockfile coordination** — `flock(1)` wraps the manifest+spawn+score critical section; mkdir-atomic fallback for flock-less platforms (macOS). `EVAL_LOCK_TIMEOUT` env (default 300s). (PR #5)
+- **`pricing.json` + dollar cost reporting** — curated rates for haiku-3-5, sonnet-4-6, opus-4-7. Per-case `cost.usd` in results.json. Total at `summary.total_cost_usd`. Staleness warning (default 60 days); `EVAL_FAIL_ON_STALE_PRICING=1` to gate. (PR #6)
+- **3-sample stability on critical path** — `--stability-samples=N` flag + `EVAL_STABILITY_SAMPLES` env. On FAIL, runs N-1 more samples. Records byte-identicity. Tags attribution `flaky:true` when samples diverge. (PR #7)
+
+### Changed
+- `lib/yq-shim.sh` (`_yq.py`) now handles `-o=json` argv form, `[]?` iteration suffix, and `// []` fallback for empty lists.
+- `lib/diff.sh` results schema gains `.cases[i].cost`, `.cases[i].stability`, `.summary.total_cost_usd`.
+
+### Verified
+- 8 test suites all green: regression_inject, case_model_override, project_config, registry, lock_concurrency, pricing, stability_inline, stop_hook.
+- v0.1.0 wire-format remains backward compatible (new fields are additive).
+
 ## [0.1.1] — 2026-05-29
 
 ### Fixed

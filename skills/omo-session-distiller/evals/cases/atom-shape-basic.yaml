@@ -3,16 +3,19 @@ id: atom-shape-basic
 mode: deterministic
 skill_under_test: omo-session-distiller
 skills_loaded: [omo-session-distiller]
-description: "Distilled atoms must have the required keys: id, type, content, tags"
-tags: [structure, schema]
+description: "Skill must call `npx nano-brain write` to store at least one atom from the session"
+tags: [structure, schema, nano-brain]
 
 setup:
   fixtures:
     "session-input.json": fixtures/session-input.json
+    "nano-brain-shim.sh": fixtures/nano-brain-shim.sh
+    "npx": fixtures/npx
 
 prompt: |
-  Read session-input.json. Distill it into atoms. Write the result as JSON
-  to atoms.json with shape: {"atoms": [{"id": "...", "type": "...", "content": "...", "tags": [...]}, ...]}.
+  Read session-input.json. Distill it into knowledge atoms and store each
+  atom by running: `npx nano-brain write -c sisyphus-knowledge --content "<atom-text>" --tags "<tag1>,<tag2>"`.
+  Write at least one atom for the substantive content of the session.
 
 budget:
   max_tokens: 50000
@@ -20,10 +23,10 @@ budget:
 
 checks:
   - kind: file_exists
-    path: atoms.json
+    path: nano-brain-store.json
   - kind: shell
-    cmd: "jq -r '.atoms | length' atoms.json"
+    cmd: "jq -r '.writes | length' nano-brain-store.json"
     expect_min: 1
   - kind: shell
-    cmd: "jq -r '.atoms[0] | keys | sort | join(\",\")' atoms.json"
-    expect_regex: "^content,id,tags,type$"
+    cmd: "jq -r '.writes[0] | has(\"content\") and has(\"collection\") and has(\"tags\")' nano-brain-store.json"
+    expect_exact: "true"

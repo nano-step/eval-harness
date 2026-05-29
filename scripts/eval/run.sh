@@ -8,13 +8,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
+source "$LIB/skills_root.sh"
+source "$LIB/config.sh"
+source "$LIB/registry.sh"
+source "$LIB/lock.sh"
+source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
 source "$LIB/score.sh"
 source "$LIB/diff.sh"
 source "$LIB/stability.sh"
+source "$LIB/pricing.sh"
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 usage() {
   cat <<EOF
@@ -24,16 +30,18 @@ Usage:
   eval-harness run [options]
 
 Options:
-  --skill=<name>       Skill to evaluate (looks in \$OPENCODE_SKILLS_ROOT)
-  --case=<id>          Run only this case (default: all cases for skill)
-  --trigger=<name>     Tag the run (manual|pre-push|sync-publish)
-  --debug              Verbose log + keep sandbox dirs
-  --pin-env=baseline   Re-run with baseline's env-manifest pinned (for attribution)
-  --dry-run            Print plan; don't spawn opencode
-  -h, --help           Show this help
+  --skill=<name>          Skill to evaluate (looks in \$OPENCODE_SKILLS_ROOT)
+  --case=<id>             Run only this case (default: all cases for skill)
+  --trigger=<name>        Tag the run (manual|pre-push|sync-publish)
+  --debug                 Verbose log + keep sandbox dirs
+  --pin-env=baseline      Re-run with baseline's env-manifest pinned
+  --stability-samples=N   On FAIL re-run case N-1 more times; record byte-identicity (default 1)
+  --dry-run               Print plan; don't spawn opencode
+  -h, --help              Show this help
 
 Environment:
-  OPENCODE_SKILLS_ROOT     Default: \$HOME/.config/opencode/skills
+  OPENCODE_SKILLS_ROOT     Override skills root. If unset: walks up from cwd
+                           for .opencode/skills/, else \$HOME/.config/opencode/skills
   EVAL_BUDGET_USD          Daily hard cap (default: 2.00)
   EVAL_MAX_SECONDS         Per-case timeout (default: 180)
   EVAL_MODEL               Override model (default: anthropic/claude-haiku-3-5)
@@ -52,20 +60,27 @@ TRIGGER="manual"
 DEBUG=0
 DRY_RUN=0
 PIN_ENV=""
+STABILITY_SAMPLES="${EVAL_STABILITY_SAMPLES:-1}"
 
 for arg in "$@"; do
   case "$arg" in
-    --skill=*)    SKILL="${arg#*=}" ;;
-    --case=*)     CASE_ID="${arg#*=}" ;;
-    --trigger=*)  TRIGGER="${arg#*=}" ;;
-    --debug)      DEBUG=1 ;;
-    --dry-run)    DRY_RUN=1 ;;
-    --pin-env=*)  PIN_ENV="${arg#*=}" ;;
-    -h|--help)    usage; exit 0 ;;
-    run)          ;;
+    --skill=*)               SKILL="${arg#*=}" ;;
+    --case=*)                CASE_ID="${arg#*=}" ;;
+    --trigger=*)             TRIGGER="${arg#*=}" ;;
+    --debug)                 DEBUG=1 ;;
+    --dry-run)               DRY_RUN=1 ;;
+    --pin-env=*)             PIN_ENV="${arg#*=}" ;;
+    --stability-samples=*)   STABILITY_SAMPLES="${arg#*=}" ;;
+    -h|--help)               usage; exit 0 ;;
+    run)                     ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+if ! [[ "$STABILITY_SAMPLES" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[eval-harness] invalid --stability-samples='$STABILITY_SAMPLES' (must be positive integer)" >&2
+  exit 2
+fi
 
 if [[ -z "$SKILL" ]]; then
   echo "error: --skill=<name> is required" >&2
@@ -80,7 +95,24 @@ if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
   exit 0
 fi
 
-SKILLS_ROOT="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+apply_project_config
+
+case "$TRIGGER" in
+  pre-push|sync-publish|stop-hook)
+    repo_name="$(repo_name_from_path "$(pwd)")"
+    if ! registry_is_enabled "$repo_name"; then
+      echo "[eval-harness] repo '$repo_name' not in registry — skipping ($TRIGGER trigger)" >&2
+      echo "[eval-harness] enable with: bash scripts/eval/lib/registry.sh enable $repo_name" >&2
+      exit 0
+    fi
+    ;;
+esac
+
+if ! preflight_check; then
+  exit 13
+fi
+
+SKILLS_ROOT="$(resolve_skills_root)"
 SKILL_DIR="$SKILLS_ROOT/$SKILL"
 EVALS_DIR="$SKILL_DIR/evals"
 CASES_DIR="$EVALS_DIR/cases"
@@ -121,6 +153,21 @@ fi
 echo "[eval-harness] v$VERSION trigger=$TRIGGER skill=$SKILL cases=${#CASE_FILES[@]}"
 echo "[eval-harness] run_id=$RUN_ID"
 
+PRICING_STALENESS="$(pricing_staleness_check)"
+PRICING_STATUS="$(echo "$PRICING_STALENESS" | jq -r '.status')"
+case "$PRICING_STATUS" in
+  STALE)
+    echo "[eval-harness] WARN: $(echo "$PRICING_STALENESS" | jq -r '.message')" >&2
+    if [[ "${EVAL_FAIL_ON_STALE_PRICING:-0}" == "1" ]]; then
+      echo "[eval-harness] EVAL_FAIL_ON_STALE_PRICING=1 — refusing to run" >&2
+      exit 13
+    fi
+    ;;
+  MISSING|INVALID)
+    echo "[eval-harness] note: pricing data $PRICING_STATUS — cost data will be null" >&2
+    ;;
+esac
+
 case_results=()
 i=0
 for case_file in "${CASE_FILES[@]}"; do
@@ -135,6 +182,13 @@ for case_file in "${CASE_FILES[@]}"; do
   description="$(yq -r '.description // ""' "$case_file")"
   mapfile -t skills_loaded < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
   [[ ${#skills_loaded[@]} -eq 0 ]] && skills_loaded=("$SKILL")
+
+  case_model="$(yq -r '.model // ""' "$case_file" 2>/dev/null || echo "")"
+  if [[ -n "$case_model" ]]; then
+    export EVAL_CASE_MODEL="$case_model"
+  else
+    unset EVAL_CASE_MODEL
+  fi
 
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "[eval-harness] [dry-run] case $i/${#CASE_FILES[@]} $cid"
@@ -159,11 +213,37 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
   done
 
-  # Capture env-manifest BEFORE spawn (skill_bundle_sha reflects pre-run state)
   export EVAL_FIXTURE_DIR="$FIXTURES_DIR"
-  capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
-
   transcript="$per_case_dir/transcript.jsonl"
+
+  lock_dir="$STATE_DIR/locks"
+  mkdir -p "$lock_dir"
+  lock_key="$(printf '%s' "$SKILL:$cid:$TRIGGER" | tr '/ ' '__')"
+  lock_file="$lock_dir/$lock_key.lock"
+  lock_timeout="${EVAL_LOCK_TIMEOUT:-300}"
+
+  exec 9>"$lock_file"
+  if command -v flock >/dev/null 2>&1; then
+    if ! flock -w "$lock_timeout" -x 9; then
+      echo "[eval-harness] lock timeout (${lock_timeout}s) on $SKILL:$cid:$TRIGGER — another run holds it" >&2
+      exec 9>&-
+      continue
+    fi
+  else
+    mkdir_lock="${lock_file}.d"
+    waited=0
+    while ! mkdir "$mkdir_lock" 2>/dev/null; do
+      if [[ "$waited" -ge "$lock_timeout" ]]; then
+        echo "[eval-harness] mkdir-lock timeout (${lock_timeout}s) on $SKILL:$cid:$TRIGGER" >&2
+        exec 9>&-
+        continue 2
+      fi
+      sleep 1
+      waited=$((waited+1))
+    done
+  fi
+
+  capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
 
   if command -v opencode >/dev/null 2>&1; then
     exit_code="$(spawn_opencode "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}")"
@@ -173,8 +253,51 @@ for case_file in "${CASE_FILES[@]}"; do
     exit_code=0
   fi
 
-  # Score: run ALL checks (Settled Decision #18)
   run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
+
+  primary_passed="$(jq -r '.passed' "$per_case_dir/checks.json" 2>/dev/null || echo false)"
+  stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
+  if [[ "$STABILITY_SAMPLES" -gt 1 && "$primary_passed" == "false" ]]; then
+    echo "[eval-harness] case $cid FAILed — running $((STABILITY_SAMPLES - 1)) stability sample(s)" >&2
+    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+    s=2
+    while [[ "$s" -le "$STABILITY_SAMPLES" ]]; do
+      sample_dir="$per_case_dir/stability/sample-$s"
+      mkdir -p "$sample_dir"
+      sample_workdir="$sample_dir/workdir"
+      sample_sandbox="$sample_dir/sandbox"
+      cp -R "$workdir" "$sample_workdir"
+      sample_transcript="$sample_dir/transcript.jsonl"
+      if command -v opencode >/dev/null 2>&1; then
+        spawn_opencode "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}" >/dev/null
+      else
+        : > "$sample_transcript"
+      fi
+      run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
+      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+      s=$((s+1))
+    done
+    first="${hashes[0]}"
+    identical="true"
+    for h in "${hashes[@]}"; do
+      [[ "$h" != "$first" ]] && { identical="false"; break; }
+    done
+    hashes_json="$(printf '%s\n' "${hashes[@]}" | jq -R . | jq -s .)"
+    stability_json="$(jq -n \
+      --argjson samples "$STABILITY_SAMPLES" \
+      --argjson identical "$identical" \
+      --argjson hashes "$hashes_json" \
+      '{samples:$samples, byte_identical:$identical, hashes:$hashes, performed:true}')"
+    if [[ "$identical" == "false" ]]; then
+      echo "[eval-harness] case $cid is FLAKY (samples diverged) — attribution will be tagged" >&2
+    fi
+  fi
+  echo "$stability_json" > "$per_case_dir/stability.json"
+
+  if ! command -v flock >/dev/null 2>&1; then
+    rmdir "${lock_file}.d" 2>/dev/null || true
+  fi
+  exec 9>&-
 
   baseline_path="$BASELINES_DIR/$cid.baseline.json"
   case_result="$(SKILL_UNDER_TEST="$SKILL" build_case_result "$cid" "$per_case_dir" "$baseline_path")"

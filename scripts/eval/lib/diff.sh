@@ -8,6 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/attribute.sh"
 source "$SCRIPT_DIR/manifest.sh"
+source "$SCRIPT_DIR/pricing.sh"
 
 # Usage: build_case_result <case_id> <run_dir> <baseline_path>
 # Emits a single case-result JSON (top-level item for results.json).
@@ -19,6 +20,7 @@ build_case_result() {
   local checks_file="$run_dir/checks.json"
   local manifest_file="$run_dir/env-manifest.json"
   local transcript="$run_dir/transcript.jsonl"
+  local stability_file="$run_dir/stability.json"
 
   local passed
   passed="$(jq -r '.passed' "$checks_file" 2>/dev/null || echo false)"
@@ -40,6 +42,28 @@ build_case_result() {
 
   local rerun_cmd="bash scripts/eval/run.sh --case=$case_id --skill=\${SKILL_UNDER_TEST} --debug --pin-env=baseline"
 
+  local model_id
+  model_id="$(jq -r '.model_id // "unknown"' "$manifest_file" 2>/dev/null || echo unknown)"
+  local toks
+  toks="$(tokens_from_transcript "$transcript")"
+  local in_t="${toks% *}"
+  local out_t="${toks#* }"
+  local cost_json
+  cost_json="$(compute_cost_usd "$model_id" "${in_t:-0}" "${out_t:-0}")"
+
+  local stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
+  if [[ -f "$stability_file" ]]; then
+    stability_json="$(cat "$stability_file")"
+  fi
+
+  if [[ "$passed" == "false" ]]; then
+    local is_flaky
+    is_flaky="$(echo "$stability_json" | jq -r 'if .performed and (.byte_identical | not) then "true" else "false" end')"
+    if [[ "$is_flaky" == "true" ]]; then
+      attribution="$(echo "$attribution" | jq '. + {flaky: true, note: "stability samples diverged — attribution may not be reliable"}')"
+    fi
+  fi
+
   jq -n \
     --arg case_id "$case_id" \
     --argjson passed "$passed" \
@@ -49,6 +73,8 @@ build_case_result() {
     --argjson attribution "$attribution" \
     --slurpfile manifest "$manifest_file" \
     --arg rerun "$rerun_cmd" \
+    --argjson cost "$cost_json" \
+    --argjson stability "$stability_json" \
     '{
       case_id: $case_id,
       passed: $passed,
@@ -56,7 +82,9 @@ build_case_result() {
       checks: ($checks[0].checks // []),
       env_delta: $env_delta,
       attribution: $attribution,
+      stability: $stability,
       env_manifest: ($manifest[0] // {}),
+      cost: $cost,
       rerun: $rerun
     }'
 }
@@ -81,6 +109,9 @@ build_run_summary() {
     verdict="FAIL"
   fi
 
+  local total_cost_usd
+  total_cost_usd="$(echo "$results_json" | jq '[.[].cost.usd // 0] | add // 0')"
+
   jq -n \
     --arg run_id "$run_id" \
     --arg trigger "$trigger" \
@@ -90,6 +121,7 @@ build_run_summary() {
     --argjson fail "$fail" \
     --argjson regressions "$regressions" \
     --argjson cases "$results_json" \
+    --argjson cost_usd "$total_cost_usd" \
     '{
       schema_version: 2,
       run_id: $run_id,
@@ -99,7 +131,8 @@ build_run_summary() {
         total: $total,
         pass: $pass,
         fail: $fail,
-        regression_count: ($regressions | length)
+        regression_count: ($regressions | length),
+        total_cost_usd: $cost_usd
       },
       regressions: $regressions,
       cases: $cases

@@ -18,7 +18,8 @@ if [[ "$SKILL" == "eval-harness" ]]; then
 fi
 
 # Opt-in gate: only run if skill has evals.required: true in skill.yaml
-SKILLS_ROOT="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/skills_root.sh"
+SKILLS_ROOT="$(resolve_skills_root)"
 SKILL_META="$SKILLS_ROOT/$SKILL/skill.yaml"
 
 if [[ -f "$SKILL_META" ]]; then

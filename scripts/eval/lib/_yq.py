@@ -92,8 +92,9 @@ def evaluate(data, expr):
             return 0
         return len(base) if hasattr(base, "__len__") else 0
 
-    if expr.endswith("[]"):
-        base = evaluate(data, expr[:-2])
+    if expr.endswith("[]?") or expr.endswith("[]"):
+        suffix_len = 3 if expr.endswith("[]?") else 2
+        base = evaluate(data, expr[:-suffix_len])
         if base is None:
             return []
         if isinstance(base, list):
@@ -141,6 +142,15 @@ def emit(result, raw, out_format, is_iter):
 
 
 def main():
+    argv = []
+    for raw in sys.argv[1:]:
+        if raw.startswith("-o="):
+            argv.extend(["-o", raw.split("=", 1)[1]])
+        elif raw.startswith("--output-format="):
+            argv.extend(["--output-format", raw.split("=", 1)[1]])
+        else:
+            argv.append(raw)
+
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("-r", action="store_true", dest="raw")
     ap.add_argument("-o", dest="out_format", default="yaml")
@@ -148,15 +158,15 @@ def main():
     ap.add_argument("--version", action="store_true")
     ap.add_argument("expr", nargs="?", default=".")
     ap.add_argument("file", nargs="?", default=None)
-    args, _ = ap.parse_known_args()
+    args, _ = ap.parse_known_args(argv)
 
     if args.version:
         print("python-yq-shim 0.1.0")
         return 0
 
     out_fmt = args.out_format
-    if out_fmt and "=" in out_fmt:
-        out_fmt = out_fmt.split("=", 1)[1]
+    if out_fmt and out_fmt.startswith("="):
+        out_fmt = out_fmt.lstrip("=")
 
     if args.file:
         with open(args.file) as f:
@@ -165,7 +175,9 @@ def main():
         data = yaml.safe_load(sys.stdin)
 
     result = evaluate(data, args.expr)
-    is_iter = args.expr.strip().endswith("[]")
+    expr_norm = args.expr.strip()
+    is_iter = (expr_norm.endswith("[]") or expr_norm.endswith("[]?")) \
+              and "// []" not in expr_norm and "//[]" not in expr_norm
     emit(result, args.raw, out_fmt, is_iter)
     return 0
 

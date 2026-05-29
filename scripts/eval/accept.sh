@@ -39,7 +39,8 @@ if [[ -z "$SKILL" ]] || [[ -z "$CASE_ID" ]]; then
   echo "error: --skill and --case required" >&2; exit 2
 fi
 
-SKILLS_ROOT="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/skills_root.sh"
+SKILLS_ROOT="$(resolve_skills_root)"
 BASELINE_PATH="$SKILLS_ROOT/$SKILL/evals/baselines/$CASE_ID.baseline.json"
 
 LATEST_RUN_DIR="$(ls -dt "${EVAL_STATE_DIR:-$HOME/.config/opencode/eval-harness}/runs"/* 2>/dev/null | head -1)"

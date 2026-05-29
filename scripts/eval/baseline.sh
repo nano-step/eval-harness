@@ -45,7 +45,14 @@ if [[ -z "$LATEST_RUN_DIR" ]] || [[ ! -f "$LATEST_RUN_DIR/results.json" ]]; then
   exit 13
 fi
 
-SKILLS_ROOT="${OPENCODE_SKILLS_ROOT:-$HOME/.config/opencode/skills}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/skills_root.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
+
+if ! preflight_check; then
+  exit 13
+fi
+
+SKILLS_ROOT="$(resolve_skills_root)"
 BASELINES_DIR="$SKILLS_ROOT/$SKILL/evals/baselines"
 mkdir -p "$BASELINES_DIR"
 
