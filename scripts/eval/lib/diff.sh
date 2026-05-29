@@ -20,6 +20,7 @@ build_case_result() {
   local checks_file="$run_dir/checks.json"
   local manifest_file="$run_dir/env-manifest.json"
   local transcript="$run_dir/transcript.jsonl"
+  local stability_file="$run_dir/stability.json"
 
   local passed
   passed="$(jq -r '.passed' "$checks_file" 2>/dev/null || echo false)"
@@ -50,6 +51,19 @@ build_case_result() {
   local cost_json
   cost_json="$(compute_cost_usd "$model_id" "${in_t:-0}" "${out_t:-0}")"
 
+  local stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
+  if [[ -f "$stability_file" ]]; then
+    stability_json="$(cat "$stability_file")"
+  fi
+
+  if [[ "$passed" == "false" ]]; then
+    local is_flaky
+    is_flaky="$(echo "$stability_json" | jq -r 'if .performed and (.byte_identical | not) then "true" else "false" end')"
+    if [[ "$is_flaky" == "true" ]]; then
+      attribution="$(echo "$attribution" | jq '. + {flaky: true, note: "stability samples diverged — attribution may not be reliable"}')"
+    fi
+  fi
+
   jq -n \
     --arg case_id "$case_id" \
     --argjson passed "$passed" \
@@ -60,6 +74,7 @@ build_case_result() {
     --slurpfile manifest "$manifest_file" \
     --arg rerun "$rerun_cmd" \
     --argjson cost "$cost_json" \
+    --argjson stability "$stability_json" \
     '{
       case_id: $case_id,
       passed: $passed,
@@ -67,6 +82,7 @@ build_case_result() {
       checks: ($checks[0].checks // []),
       env_delta: $env_delta,
       attribution: $attribution,
+      stability: $stability,
       env_manifest: ($manifest[0] // {}),
       cost: $cost,
       rerun: $rerun

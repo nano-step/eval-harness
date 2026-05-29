@@ -30,13 +30,14 @@ Usage:
   eval-harness run [options]
 
 Options:
-  --skill=<name>       Skill to evaluate (looks in \$OPENCODE_SKILLS_ROOT)
-  --case=<id>          Run only this case (default: all cases for skill)
-  --trigger=<name>     Tag the run (manual|pre-push|sync-publish)
-  --debug              Verbose log + keep sandbox dirs
-  --pin-env=baseline   Re-run with baseline's env-manifest pinned (for attribution)
-  --dry-run            Print plan; don't spawn opencode
-  -h, --help           Show this help
+  --skill=<name>          Skill to evaluate (looks in \$OPENCODE_SKILLS_ROOT)
+  --case=<id>             Run only this case (default: all cases for skill)
+  --trigger=<name>        Tag the run (manual|pre-push|sync-publish)
+  --debug                 Verbose log + keep sandbox dirs
+  --pin-env=baseline      Re-run with baseline's env-manifest pinned
+  --stability-samples=N   On FAIL re-run case N-1 more times; record byte-identicity (default 1)
+  --dry-run               Print plan; don't spawn opencode
+  -h, --help              Show this help
 
 Environment:
   OPENCODE_SKILLS_ROOT     Override skills root. If unset: walks up from cwd
@@ -59,20 +60,27 @@ TRIGGER="manual"
 DEBUG=0
 DRY_RUN=0
 PIN_ENV=""
+STABILITY_SAMPLES="${EVAL_STABILITY_SAMPLES:-1}"
 
 for arg in "$@"; do
   case "$arg" in
-    --skill=*)    SKILL="${arg#*=}" ;;
-    --case=*)     CASE_ID="${arg#*=}" ;;
-    --trigger=*)  TRIGGER="${arg#*=}" ;;
-    --debug)      DEBUG=1 ;;
-    --dry-run)    DRY_RUN=1 ;;
-    --pin-env=*)  PIN_ENV="${arg#*=}" ;;
-    -h|--help)    usage; exit 0 ;;
-    run)          ;;
+    --skill=*)               SKILL="${arg#*=}" ;;
+    --case=*)                CASE_ID="${arg#*=}" ;;
+    --trigger=*)             TRIGGER="${arg#*=}" ;;
+    --debug)                 DEBUG=1 ;;
+    --dry-run)               DRY_RUN=1 ;;
+    --pin-env=*)             PIN_ENV="${arg#*=}" ;;
+    --stability-samples=*)   STABILITY_SAMPLES="${arg#*=}" ;;
+    -h|--help)               usage; exit 0 ;;
+    run)                     ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+if ! [[ "$STABILITY_SAMPLES" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[eval-harness] invalid --stability-samples='$STABILITY_SAMPLES' (must be positive integer)" >&2
+  exit 2
+fi
 
 if [[ -z "$SKILL" ]]; then
   echo "error: --skill=<name> is required" >&2
@@ -246,6 +254,45 @@ for case_file in "${CASE_FILES[@]}"; do
   fi
 
   run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
+
+  primary_passed="$(jq -r '.passed' "$per_case_dir/checks.json" 2>/dev/null || echo false)"
+  stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
+  if [[ "$STABILITY_SAMPLES" -gt 1 && "$primary_passed" == "false" ]]; then
+    echo "[eval-harness] case $cid FAILed — running $((STABILITY_SAMPLES - 1)) stability sample(s)" >&2
+    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+    s=2
+    while [[ "$s" -le "$STABILITY_SAMPLES" ]]; do
+      sample_dir="$per_case_dir/stability/sample-$s"
+      mkdir -p "$sample_dir"
+      sample_workdir="$sample_dir/workdir"
+      sample_sandbox="$sample_dir/sandbox"
+      cp -R "$workdir" "$sample_workdir"
+      sample_transcript="$sample_dir/transcript.jsonl"
+      if command -v opencode >/dev/null 2>&1; then
+        spawn_opencode "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}" >/dev/null
+      else
+        : > "$sample_transcript"
+      fi
+      run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
+      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+      s=$((s+1))
+    done
+    first="${hashes[0]}"
+    identical="true"
+    for h in "${hashes[@]}"; do
+      [[ "$h" != "$first" ]] && { identical="false"; break; }
+    done
+    hashes_json="$(printf '%s\n' "${hashes[@]}" | jq -R . | jq -s .)"
+    stability_json="$(jq -n \
+      --argjson samples "$STABILITY_SAMPLES" \
+      --argjson identical "$identical" \
+      --argjson hashes "$hashes_json" \
+      '{samples:$samples, byte_identical:$identical, hashes:$hashes, performed:true}')"
+    if [[ "$identical" == "false" ]]; then
+      echo "[eval-harness] case $cid is FLAKY (samples diverged) — attribution will be tagged" >&2
+    fi
+  fi
+  echo "$stability_json" > "$per_case_dir/stability.json"
 
   if ! command -v flock >/dev/null 2>&1; then
     rmdir "${lock_file}.d" 2>/dev/null || true
