@@ -82,6 +82,135 @@ scripts/eval/
 - **Cost ceiling**: `EVAL_BUDGET_USD=2.00` hard daily cap. Tokens-based capture.
 - **One-command rerun** in every FAIL output.
 
+---
+
+## What this harness scores (the factors)
+
+Be explicit about what is and isn't checked. v0.1.0 evaluates **two layers** with different jobs:
+
+### Layer 1 — Behavior factors (eval-harness itself, this repo, this version)
+
+Every case in `.opencode/skills/<skill>/evals/cases/*.yaml` declares one or more **checks**. The harness runs **all checks** per case and aggregates failures. v0.1.0 supports exactly **5 check kinds**:
+
+| # | Check kind | What it scores | Reliability |
+|---|---|---|---|
+| 1 | `shell`            | Runs a shell command in the case workdir; matches stdout against `expect_regex` / `expect_min` / `expect_exact`. | High — deterministic. |
+| 2 | `jq_path_contains` | Reads a JSON file in workdir, walks a jq path, asserts the result array contains all `contains:` values. | High — deterministic. |
+| 3 | `file_exists`      | Asserts a file exists at the given path in workdir. | High — deterministic. |
+| 4 | `output_contains`  | Greps the opencode transcript for a literal string. Records `transcript_span` on hit. | High — deterministic, literal-only. |
+| 5 | `output_not_contains` | Inverse of #4. Used for refusal / forbidden-output checks. | High — deterministic, literal-only. |
+
+**Hard scope guardrail**: a skill that produces prose without structured output **cannot be evaluated reliably with these 5 kinds**. Prose evaluation lands in v0.3 (LLM-judge with cross-model debias). If your case YAML uses an unrecognised `kind:`, the harness emits an `error: true` result and excludes it from regression diff — it does not silently pass.
+
+### Layer 2 — Environment & attribution factors (for FAIL diagnosis)
+
+When a case fails, the harness attributes the cause using **4 environment-manifest fields** captured per run:
+
+| Manifest field | Catches |
+|---|---|
+| `skill_bundle_sha` (transitive hash of all skills) | `SKILL_CHANGED` |
+| `skill_sha` (just this skill) | `SKILL_CHANGED` (narrower) |
+| `fixture_sha` (case fixture directory) | `FIXTURE_STALE` |
+| `model_id` + `opencode_version` | `MODEL_CHANGED` |
+| (none of the above changed) | `UNKNOWN_DRIFT` |
+
+These four are everything attribution looks at in v0.1.0. `MCP_FLAKE` and `HARNESS_BUG` are designed but not shipped (deferred until they bite).
+
+### Layer 3 — Skill *design* factors (NOT in this repo)
+
+A separate concern, deferred to a future `skill-reviewer` tool. v0.1.0 does **not** review skill design quality (trigger phrase collisions, frontmatter shape, examples present, security greps, bundle size, etc.).
+
+A draft heuristic for design review lives at [`standards/skill-quality-v1.md`](./standards/skill-quality-v1.md). Read it understanding that:
+
+- **13 of 30 factors** are grounded in real sources (Anthropic Skills doc + OWASP shell-security greps + MCP tool conventions). Reliable to apply.
+- **17 of 30 factors** are heuristic synthesis from pattern-matching across one workspace. Use with judgment; treat as "things to consider," not "things that pass/fail."
+- There is **no published, authoritative skill-quality benchmark** in the industry today. Anyone claiming one is synthesising — same as we are. This doc is honest about which factors are grounded vs invented.
+
+The grounded subset (the 13) covers: frontmatter schema, description verb-led format, ≥1 input→output example required, OWASP-class security greps (`rm -rf $VAR`, `curl | sh`, `eval $VAR`), and basic maintenance hygiene (recent activity, deprecation references). Everything else is a draft heuristic.
+
+---
+
+## The review workflow — how factors get enforced
+
+There are **two workflows** in v0.1.0. Each enforces a specific subset of factors at a specific gate.
+
+### Workflow A — Behavior regression (automatic, every push)
+
+```mermaid
+flowchart TD
+  A[Skill edited in .opencode/skills/X/] --> B{git push?}
+  B -- yes --> C[pre-push hook fires]
+  C --> D[Detect affected skill from changed files]
+  D --> E[Run all cases for skill X]
+  E --> F[Sandbox each case: ephemeral HOME/OPENCODE_CONFIG_DIR/cwd]
+  F --> G[Spawn opencode run with skills_loaded pinned]
+  G --> H[Run ALL 5-kind checks per case]
+  H --> I{Any case FAIL?}
+  I -- no --> J[exit 0, push proceeds]
+  I -- yes --> K[Compute env_delta + 4-class attribution]
+  K --> L[Render diff.md with 6-field FAIL detail]
+  L --> M{Promoted to BLOCKING?}
+  M -- no  --> N[Warn-only: exit 0, push proceeds, atom written to nano-brain]
+  M -- yes --> O[exit 12, push BLOCKED unless EVAL_BYPASS=1]
+```
+
+**Factors enforced**: Layer 1 (5 check kinds) + Layer 2 (4 attribution fields). One gate, one trigger, deterministic.
+
+### Workflow B — Pre-publish (opt-in, before npm publish)
+
+```mermaid
+flowchart TD
+  A[sync-skill-to-manager publish X] --> B[Read skill.yaml]
+  B --> C{evals.required: true?}
+  C -- no --> D[Skip eval gate, publish proceeds]
+  C -- yes --> E{X is eval-harness itself?}
+  E -- yes --> F[Whitelisted, publish proceeds]
+  E -- no --> G[Run full eval suite for X]
+  G --> H{Any regression vs baseline?}
+  H -- no --> I[exit 0, publish proceeds]
+  H -- yes --> J[exit 12, publish BLOCKED]
+```
+
+**Factors enforced**: same Layer 1 + Layer 2, but at the publish boundary instead of the push boundary. Opt-in per skill via `skill.yaml: evals.required: true`.
+
+### What each workflow does NOT enforce
+
+| Concern | Workflow A (push) | Workflow B (publish) | Where it belongs |
+|---|---|---|---|
+| Trigger phrase collision with other skills | ❌ | ❌ | Future `skill-reviewer` tool |
+| Frontmatter schema validation | ❌ | ❌ | Future `skill-reviewer` tool |
+| OWASP shell-security greps | ❌ | ❌ | Future `skill-reviewer` tool |
+| Bundle size / context cost | ❌ | ❌ | Future `skill-reviewer` tool |
+| Prose output quality | ❌ | ❌ | v0.3 LLM-judge |
+| Cross-skill behavioral interaction | ⚠️ partial (via `skill_bundle_sha`) | ⚠️ partial | v0.3 |
+| Cost regression (tokens/dollars rising) | ❌ (tokens captured, not gated) | ❌ | v0.2 |
+
+This table is the **honest scope statement**. Anything not in Workflow A or B is not enforced by v0.1.0.
+
+---
+
+## How to verify the harness is actually running these factors
+
+Three reproducible commands, each scoped to a different layer:
+
+```bash
+# Layer 1 + Layer 2 — full pipeline including attribution
+npm test
+# → runs scripts/eval/tests/regression_inject.sh
+# → asserts: verdict=REGRESSION, attribution=SKILL_CHANGED, 6-field FAIL populated
+# → exit 0 = harness is real
+
+# Layer 1 — dry-run case discovery only (no API spend)
+eval-harness run --skill=<your-skill> --dry-run
+# → lists cases that would execute, no scoring
+
+# Layer 1 — single check kind in isolation
+bash scripts/eval/lib/score.sh check <one-check.yaml> <workdir> <transcript>
+# → emits one check-result JSON to stdout
+```
+
+If you need to know whether a specific factor is being checked, point at the case YAML — `.checks[]` is the complete list of factors that case enforces. There is no hidden scoring.
+
 ## Triggers
 
 | Trigger | Mode | Blocks? | Cases |
