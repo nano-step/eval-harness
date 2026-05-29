@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
 source "$LIB/skills_root.sh"
+source "$LIB/config.sh"
 source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
@@ -82,6 +83,8 @@ if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
   log_bypass "$SKILL" "$TRIGGER"
   exit 0
 fi
+
+apply_project_config
 
 if ! preflight_check; then
   exit 13
