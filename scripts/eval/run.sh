@@ -10,6 +10,7 @@ LIB="$SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
 source "$LIB/skills_root.sh"
 source "$LIB/config.sh"
+source "$LIB/registry.sh"
 source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
@@ -85,6 +86,17 @@ if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
 fi
 
 apply_project_config
+
+case "$TRIGGER" in
+  pre-push|sync-publish|stop-hook)
+    repo_name="$(repo_name_from_path "$(pwd)")"
+    if ! registry_is_enabled "$repo_name"; then
+      echo "[eval-harness] repo '$repo_name' not in registry — skipping ($TRIGGER trigger)" >&2
+      echo "[eval-harness] enable with: bash scripts/eval/lib/registry.sh enable $repo_name" >&2
+      exit 0
+    fi
+    ;;
+esac
 
 if ! preflight_check; then
   exit 13
