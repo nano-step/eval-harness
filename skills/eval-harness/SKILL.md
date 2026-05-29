@@ -2,7 +2,7 @@
 name: eval-harness
 description: Detects behavior regressions in opencode skills by running structured eval cases and comparing against committed baselines. Use whenever you say "run evals", "check regression", "baseline this skill", "did my skill regress", "did this prompt regress", "A/B these two skills" — or after editing any skill in `.opencode/skills/**`. Wires into `sync-skill-to-manager` as a pre-publish gate (opt-in per skill via `skill.yaml: evals.required`). Ships 4-class attribution (SKILL_CHANGED / FIXTURE_STALE / MODEL_CHANGED / UNKNOWN_DRIFT), 6-field FAIL diagnostics (failed_check_id, expected, actual, diff_hint, transcript_span, env_delta), and a one-command rerun affordance on every failure. v0.1.0 scope: structured-output skills only — prose-output skills (pr-code-reviewer, od-workflow, blog-workflow, idea-workflow) are deferred to v0.3 LLM-judge.
 compatibility: opencode 1.15.10+
-version: 0.3.0
+version: 0.4.0
 ---
 
 # eval-harness

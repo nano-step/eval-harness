@@ -4,6 +4,14 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-29
+
+### Added
+- **Heuristic auto-fix proposer** — `scripts/eval/lib/autofix.sh` attaches `.fix_proposal` to every FAILED check whose failure mode is mechanically diagnosable: `output_contains`, `output_not_contains`, `jq_path_contains`, `file_exists`, `shell` (exact / min / regex). Each proposal carries `kind`, `confidence`, `instruction`, `patch_snippet`, and `auto_apply: false`. `llm_judge` and unknown kinds yield `fix_proposal: null` — the harness won't guess prose. Gated by `EVAL_AUTOFIX` (default 1). (PR #13)
+
+### Verified
+- 11 test suites green (v0.3.0's 10 + autofix).
+
 ## [0.3.0] — 2026-05-29
 
 ### Added
