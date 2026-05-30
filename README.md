@@ -395,6 +395,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for details.
   - `MCP_FLAKE` + `HARNESS_BUG` attribution classes
 - **`skill-reviewer`** (separate repo): Layer-3 design review (frontmatter shape, trigger collisions, OWASP greps, bundle size). Tracked outside this repo.
 
-## License
+---
 
-MIT © Hoài Nhớ ([nano-step](https://github.com/nano-step))
+> *Forged in the regression furnace.*
+> MIT · Hoài Nhớ · [nano-step](https://github.com/nano-step)
