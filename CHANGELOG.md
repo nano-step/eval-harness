@@ -4,6 +4,11 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-05-30
+
+### Fixed
+- **Install via `npm link` / `npm install -g` was broken.** Top-level entrypoints (`run.sh`, `twotier.sh`, `accept.sh`, `baseline.sh`, `install-hooks.sh`) resolved `BASH_SOURCE[0]` via `$(dirname …)` only, which returned the symlink directory (the npm `bin/`), not the package's actual `scripts/eval/` directory. Sourcing siblings then failed with "No such file or directory". Each entrypoint now walks the symlink chain portably (BSD/Linux compatible, no `readlink -f` dependency) before resolving its own dir.
+
 ## [0.4.0] — 2026-05-29
 
 ### Added

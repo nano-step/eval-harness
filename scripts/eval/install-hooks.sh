@@ -3,8 +3,17 @@
 
 set -euo pipefail
 
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
 REPO_ROOT="${1:-$(pwd)}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(_resolve_script_dir)"
 
 if [[ ! -d "$REPO_ROOT/.git" ]]; then
   echo "error: $REPO_ROOT is not a git repo" >&2
