@@ -393,6 +393,8 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for details.
 v0.4.2 (2026-05-30) closes all 8 BLOCKERs surfaced by independent audits.
 See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the remaining HIGH/MEDIUM items.
 
+**Want to help?** 25 issues are open with clear scope — [12 are `good first issue`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped fixes) and [12 are `help wanted`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22help+wanted%22) (real features). See the [📍 pinned roadmap issue #26](https://github.com/nano-step/eval-harness/issues/26) and [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
 ### v0.4.2 — Hardening release ✅ shipped
 
 All 8 BLOCKERs closed:
