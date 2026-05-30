@@ -6,7 +6,16 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
+SCRIPT_DIR="$(_resolve_script_dir)"
 
 usage() {
   cat <<EOF
@@ -39,7 +48,7 @@ if [[ -z "$SKILL" ]] || [[ -z "$CASE_ID" ]]; then
   echo "error: --skill and --case required" >&2; exit 2
 fi
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/skills_root.sh"
+source "$SCRIPT_DIR/lib/skills_root.sh"
 SKILLS_ROOT="$(resolve_skills_root)"
 BASELINE_PATH="$SKILLS_ROOT/$SKILL/evals/baselines/$CASE_ID.baseline.json"
 

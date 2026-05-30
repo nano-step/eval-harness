@@ -5,7 +5,16 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
+SCRIPT_DIR="$(_resolve_script_dir)"
 source "$SCRIPT_DIR/lib/manifest.sh"
 
 usage() {
@@ -45,8 +54,8 @@ if [[ -z "$LATEST_RUN_DIR" ]] || [[ ! -f "$LATEST_RUN_DIR/results.json" ]]; then
   exit 13
 fi
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/skills_root.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
+source "$SCRIPT_DIR/lib/skills_root.sh"
+source "$SCRIPT_DIR/lib/preflight.sh"
 
 if ! preflight_check; then
   exit 13

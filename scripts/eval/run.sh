@@ -5,7 +5,16 @@
 
 set -euo pipefail
 
-RUN_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
+RUN_SCRIPT_DIR="$(_resolve_script_dir)"
 LIB="$RUN_SCRIPT_DIR/lib"
 source "$LIB/yq-shim.sh"
 source "$LIB/skills_root.sh"
@@ -20,7 +29,7 @@ source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
 
-VERSION="0.4.0"
+VERSION="0.4.1"
 
 usage() {
   cat <<EOF
