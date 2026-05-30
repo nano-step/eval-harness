@@ -385,15 +385,72 @@ Run `eval-harness run --skill=pr-code-reviewer --mode=2tier` to evaluate cheaply
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for details.
 
-## Roadmap (open)
+## Roadmap
 
-- **v0.5.0+** candidates (not committed):
-  - Cost-regression gating (block PRs that raise per-case $ vs baseline)
-  - Auto-fix **applier** (v0.4.0 only proposes; v0.5+ would apply with confirmation)
-  - opencode Stop-hook activation once plugin API lands
-  - Stochastic `pass@k` mode (T>0, multiple samples)
-  - `MCP_FLAKE` + `HARNESS_BUG` attribution classes
-- **`skill-reviewer`** (separate repo): Layer-3 design review (frontmatter shape, trigger collisions, OWASP greps, bundle size). Tracked outside this repo.
+Two independent audits on 2026-05-30 surfaced 8 BLOCKERs + 4 HIGH severity bugs in v0.4.1.
+The roadmap below is **honest about that**: hardening comes before features.
+See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the full pinned bug list.
+
+### v0.4.2 — Hardening release (BLOCKER fixes, ~1-2 days)
+
+Required before recommending eval-harness for anyone but the author.
+
+- Fix `EVAL_BYPASS=1` crash (function-before-definition bug)
+- Sandbox or whitelist `score_shell`'s `bash -c "$cmd"` (RCE risk)
+- Fix fixture-copy subshell + add `..` path-traversal guard
+- Fix `attribute.sh` BRE alternation (SKILL_CHANGED broken on macOS)
+- Render `.fix_proposal` in `diff.md` (currently invisible — the v0.4.0 feature)
+- Fix `--mode=2tier` verdict aggregation across escalated cases
+- Treat empty/missing transcript as harness error, not vacuous PASS
+- Handle `timeout(1)` exit 124 as harness error, not silent partial-transcript scoring
+- Commit real baselines for `omo-session-distiller` and `pr-code-reviewer`
+- Add `KNOWN_ISSUES.md` honest disclosure
+
+### v0.4.3 — Correctness polish (~1 day)
+
+- `trap` for lock fd / mkdir-lock cleanup on SIGINT/SIGTERM
+- Larger run-ID collision space (`$RANDOM$RANDOM` or `openssl rand`)
+- `flock` the `history.ndjson` append
+- LLM-judge verdict parser: scan only first line of response
+- Cap `samples:` field in case YAML (prevent runaway cost)
+- Delete or fix `propose_fixes_for_run` tautology bug (dead code today)
+- Preflight `python3` + `pyyaml` presence (yq-shim silently breaks without them)
+- Remove `$workdir` PATH-prepend or restrict to `$workdir/bin/` only
+
+### v0.5.0 — CI-ready (~1 week)
+
+The version that's actually safe to recommend for CI/CD gating.
+
+- `--strict` mode (flip warn-only off; exit 12 on first regression)
+- `--ci` mode + JUnit / SARIF reporter + PR-comment integration
+- Shared-state daily budget ledger (`EVAL_BUDGET_USD` actually enforced across runs)
+- Cost-regression gating (block PRs that raise per-case $ vs baseline)
+- Self-eat suite: `skills/eval-harness/evals/cases/*.yaml` for the harness itself
+- Auto-fix **applier** (v0.4.0 only proposes; v0.5 would apply with explicit confirmation)
+
+### v0.6.0 — DX polish
+
+- Branch-filter for pre-push (skip WIP branches)
+- Cross-skill behavioral interaction diagnosis (which skill broke which?)
+- Automatic warn-only → blocking promotion after N green days
+- A/B mode (`eval-harness ab --base=X --candidate=Y`)
+- opencode Stop-hook activation once plugin API lands
+
+### v0.7.0 — Scale
+
+- Anthropic API rate-limit handling + exponential backoff
+- Per-run cost cap (`EVAL_BUDGET_USD` currently daily-only)
+- Judge response caching by `(rubric_hash + artifact_hash)` — don't re-burn tokens on identical artifacts
+- Stochastic `pass@k` mode (T>0, multiple samples)
+- `MCP_FLAKE` + `HARNESS_BUG` attribution classes
+
+### v1.0.0 — Stable
+
+Trigger: all BLOCKERs from v0.4.1 audits closed; harness self-eaten on its own evals; CI-proven on at least 2 external repos; semver + deprecation policies published; `--ci` mode adopted by ≥1 real CI pipeline.
+
+### Out of scope (separate project)
+
+**`skill-reviewer`** — Layer-3 design review (frontmatter schema, trigger-phrase collisions, OWASP shell greps, bundle size, examples-present, deprecation references). Different tool, different repo, different release cadence. See [`standards/skill-quality-v1.md`](./standards/skill-quality-v1.md) for the draft rubric.
 
 ---
 
