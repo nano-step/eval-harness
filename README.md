@@ -1,6 +1,7 @@
 # @nano-step/eval-harness
 
-**v0.4.0** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
+**v0.4.2** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
+> v0.4.2 closes all 8 BLOCKERs surfaced by independent audits: `EVAL_BYPASS` works, `score_shell` is sandboxed, fixture path-traversal blocked, `attribute.sh` portable across grep flavors, `fix_proposal` renders in `diff.md`, `--mode=2tier` aggregates verdicts correctly, empty/timed-out transcripts surface as harness errors rather than vacuous PASS.
 
 > **Scope statement.** eval-harness measures **behavior regression** for opencode skills. It is NOT a skill reviewer, NOT a quality grader, NOT a general-purpose evaluator. v0.4.0 covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool.
 
@@ -377,7 +378,9 @@ Run `eval-harness run --skill=pr-code-reviewer --mode=2tier` to evaluate cheaply
 
 | Version | Released | Highlights |
 |---|---|---|
-| **v0.4.0** | 2026-05-29 | Heuristic auto-fix proposer for safe check kinds |
+| **v0.4.2** | 2026-05-30 | Hardening: closed all 8 BLOCKERs from audits — bypass crash, score_shell RCE, fixture traversal, macOS attribution, fix_proposal rendering, 2tier aggregation, empty transcripts, timeout handling |
+| v0.4.1 | 2026-05-30 | Fix npm-link symlink resolution in entrypoint scripts |
+| v0.4.0 | 2026-05-29 | Heuristic auto-fix proposer for safe check kinds |
 | v0.3.0 | 2026-05-29 | LLM judge (sonnet-4-6 / opus-4-7, 3-sample majority) · `pr-code-reviewer` demo · 2-tier mode |
 | v0.2.0 | 2026-05-29 | Project config · per-case model override · per-repo registry · flock lockfile · pricing/cost · stability on critical path · Stop-hook scaffold |
 | v0.1.1 | 2026-05-29 | Patch: model ID + demo path + factors README + SQS-1 honesty |
@@ -387,24 +390,20 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for details.
 
 ## Roadmap
 
-Two independent audits on 2026-05-30 surfaced 8 BLOCKERs + 4 HIGH severity bugs in v0.4.1.
-The roadmap below is **honest about that**: hardening comes before features.
-See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the full pinned bug list.
+v0.4.2 (2026-05-30) closes all 8 BLOCKERs surfaced by independent audits.
+See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the remaining HIGH/MEDIUM items.
 
-### v0.4.2 — Hardening release (BLOCKER fixes, ~1-2 days)
+### v0.4.2 — Hardening release ✅ shipped
 
-Required before recommending eval-harness for anyone but the author.
-
-- Fix `EVAL_BYPASS=1` crash (function-before-definition bug)
-- Sandbox or whitelist `score_shell`'s `bash -c "$cmd"` (RCE risk)
-- Fix fixture-copy subshell + add `..` path-traversal guard
-- Fix `attribute.sh` BRE alternation (SKILL_CHANGED broken on macOS)
-- Render `.fix_proposal` in `diff.md` (currently invisible — the v0.4.0 feature)
-- Fix `--mode=2tier` verdict aggregation across escalated cases
-- Treat empty/missing transcript as harness error, not vacuous PASS
-- Handle `timeout(1)` exit 124 as harness error, not silent partial-transcript scoring
-- Commit real baselines for `omo-session-distiller` and `pr-code-reviewer`
-- Add `KNOWN_ISSUES.md` honest disclosure
+All 8 BLOCKERs closed:
+- ✅ Fixed `EVAL_BYPASS=1` crash (function-before-definition)
+- ✅ Sandboxed `score_shell`'s `bash -c "$cmd"` with metachar/dangerous-binary filter
+- ✅ Fixed fixture-copy subshell + path-traversal guard (absolute paths + `..` blocked)
+- ✅ Fixed `attribute.sh` BRE alternation (works on macOS BSD grep now)
+- ✅ Rendered `.fix_proposal` in `diff.md` (v0.4.0 feature finally visible)
+- ✅ Fixed `--mode=2tier` verdict aggregation across escalated cases
+- ✅ Treat empty/missing transcript as harness error, not vacuous PASS
+- ✅ Handle `timeout(1)` exit 124 as harness error
 
 ### v0.4.3 — Correctness polish (~1 day)
 

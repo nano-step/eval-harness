@@ -33,9 +33,23 @@ preflight_check() {
   done
 
   if [[ "$has_cred" == "0" ]]; then
-    echo "[eval-harness] preflight FAIL: no usable provider API key in env." >&2
-    echo "  Checked: ANTHROPIC_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY" >&2
-    echo "  Set one (>=20 chars, not a REDACTED placeholder), or set EVAL_SKIP_AUTH_CHECK=1" >&2
+    for auth_path in \
+      "${OPENCODE_AUTH_FILE:-}" \
+      "$HOME/.local/share/opencode/auth.json" \
+      "$HOME/.config/opencode/auth.json"
+    do
+      if [[ -n "$auth_path" && -s "$auth_path" ]]; then
+        has_cred=1
+        break
+      fi
+    done
+  fi
+
+  if [[ "$has_cred" == "0" ]]; then
+    echo "[eval-harness] preflight FAIL: no usable provider credential found." >&2
+    echo "  Env vars checked: ANTHROPIC_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY (each must be >=20 chars, non-REDACTED)" >&2
+    echo "  Opencode auth checked: \$OPENCODE_AUTH_FILE, ~/.local/share/opencode/auth.json, ~/.config/opencode/auth.json (must exist + be non-empty)" >&2
+    echo "  Either set a provider env var, log in via opencode, or set EVAL_SKIP_AUTH_CHECK=1." >&2
     fail=1
   fi
 

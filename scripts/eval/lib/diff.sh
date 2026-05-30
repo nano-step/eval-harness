@@ -182,7 +182,12 @@ render_diff_md() {
           "- **" + .failed_check_id + "**\n" +
           "  - expected: `" + (.expected | tostring) + "`\n" +
           "  - actual:   `" + (.actual | tostring) + "`\n" +
-          "  - hint:     " + (.diff_hint // "")
+          "  - hint:     " + (.diff_hint // "") +
+          (if .fix_proposal != null then
+            "\n  - **fix_proposal** (" + .fix_proposal.kind + ", confidence: " + .fix_proposal.confidence + "):\n" +
+            "    - " + .fix_proposal.instruction + "\n" +
+            "    - patch snippet: `" + (.fix_proposal.patch_snippet | tostring) + "`"
+           else "" end)
         ] | join("\n")) + "\n"
       ' "$results"
     fi

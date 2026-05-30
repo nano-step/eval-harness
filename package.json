@@ -1,6 +1,6 @@
 {
   "name": "@nano-step/eval-harness",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Behavior-regression eval harness for opencode skills. Bash-first, 4-class attribution, structured-output skills only.",
   "license": "MIT",
   "author": "Hoài Nhớ <nhoxtvt@gmail.com>",

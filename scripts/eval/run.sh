@@ -29,7 +29,7 @@ source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
 
-VERSION="0.4.1"
+VERSION="0.4.2"
 
 usage() {
   cat <<EOF
@@ -126,10 +126,20 @@ if [[ -z "$SKILL" ]]; then
   exit 2
 fi
 
-# Bypass check (Settled #18: EVAL_BYPASS=1 logged but proceeds)
+STATE_DIR="${EVAL_STATE_DIR:-$HOME/.config/opencode/eval-harness}"
+mkdir -p "$STATE_DIR/locks" "$STATE_DIR/runs"
+HISTORY_LOG="$STATE_DIR/history.ndjson"
+touch "$HISTORY_LOG"
+
+log_bypass_event() {
+  local skill="$1"; local trigger="$2"
+  jq -n --arg ts "$(date -u +%FT%TZ)" --arg s "$skill" --arg t "$trigger" \
+    '{event:"bypass", timestamp:$ts, skill:$s, trigger:$t}' >> "$HISTORY_LOG"
+}
+
 if [[ "${EVAL_BYPASS:-0}" == "1" ]]; then
   echo "[eval-harness] EVAL_BYPASS=1 — skipping eval, logging bypass" >&2
-  log_bypass "$SKILL" "$TRIGGER"
+  log_bypass_event "$SKILL" "$TRIGGER"
   exit 0
 fi
 
@@ -169,17 +179,6 @@ if [[ ! -d "$CASES_DIR" ]]; then
   echo "[eval-harness] no evals found for skill '$SKILL' at $CASES_DIR" >&2
   exit 0
 fi
-
-STATE_DIR="${EVAL_STATE_DIR:-$HOME/.config/opencode/eval-harness}"
-mkdir -p "$STATE_DIR/locks" "$STATE_DIR/runs"
-HISTORY_LOG="$STATE_DIR/history.ndjson"
-touch "$HISTORY_LOG"
-
-log_bypass() {
-  local skill="$1"; local trigger="$2"
-  jq -n --arg ts "$(date -u +%FT%TZ)" --arg s "$skill" --arg t "$trigger" \
-    '{event:"bypass", timestamp:$ts, skill:$s, trigger:$t}' >> "$HISTORY_LOG"
-}
 
 RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)-$RANDOM"
 RUN_DIR="$STATE_DIR/runs/$RUN_ID"
@@ -247,17 +246,50 @@ for case_file in "${CASE_FILES[@]}"; do
   sandbox="$per_case_dir/sandbox"
   mkdir -p "$workdir"
 
-  # Materialize fixtures into the workdir (Settled Decision #9)
-  yq -o=json '.setup.fixtures // {}' "$case_file" | jq -r 'to_entries[] | "\(.key)\t\(.value)"' | while IFS=$'\t' read -r dest src; do
+  fixture_error=0
+  while IFS=$'\t' read -r dest src; do
+    [[ -z "$dest" ]] && continue
+
+    if [[ "$dest" = /* ]] || [[ "$dest" == *..* ]]; then
+      echo "[eval-harness] case $cid: rejecting fixture dest='$dest' (absolute or contains '..')" >&2
+      fixture_error=1
+      break
+    fi
+
     src_path="$src"
     if [[ "$src" != /* ]]; then
       src_path="$EVALS_DIR/$src"
     fi
-    mkdir -p "$(dirname "$workdir/$dest")"
-    if [[ -f "$src_path" ]]; then
-      cp "$src_path" "$workdir/$dest"
+
+    full_dest="$workdir/$dest"
+    canonical_dest="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$full_dest")"
+    canonical_workdir="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$workdir")"
+    if [[ "$canonical_dest" != "$canonical_workdir"/* && "$canonical_dest" != "$canonical_workdir" ]]; then
+      echo "[eval-harness] case $cid: rejecting fixture dest='$dest' — resolves outside workdir" >&2
+      fixture_error=1
+      break
     fi
-  done
+
+    if ! mkdir -p "$(dirname "$full_dest")"; then
+      echo "[eval-harness] case $cid: mkdir failed for $(dirname "$full_dest")" >&2
+      fixture_error=1
+      break
+    fi
+    if [[ -f "$src_path" ]]; then
+      if ! cp "$src_path" "$full_dest"; then
+        echo "[eval-harness] case $cid: cp failed: $src_path -> $full_dest" >&2
+        fixture_error=1
+        break
+      fi
+    else
+      echo "[eval-harness] case $cid: fixture source missing: $src_path" >&2
+    fi
+  done < <(yq -o=json '.setup.fixtures // {}' "$case_file" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+
+  if [[ "$fixture_error" == "1" ]]; then
+    echo "[eval-harness] case $cid: fixture errors — skipping case" >&2
+    continue
+  fi
 
   export EVAL_FIXTURE_DIR="$FIXTURES_DIR"
   transcript="$per_case_dir/transcript.jsonl"
@@ -299,7 +331,49 @@ for case_file in "${CASE_FILES[@]}"; do
     exit_code=0
   fi
 
-  run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
+  if [[ "$exit_code" == "124" ]]; then
+    echo "[eval-harness] case $cid: opencode timed out after ${EVAL_MAX_SECONDS:-180}s (exit 124)" >&2
+    jq -n \
+      --arg cid "$cid" \
+      --arg expected "opencode completes within ${EVAL_MAX_SECONDS:-180}s" \
+      '{
+        passed: false,
+        total: 0,
+        pass_count: 0,
+        fail_count: 1,
+        checks: [{
+          kind: "harness_error",
+          passed: false,
+          failed_check_id: ("timeout:" + $cid),
+          expected: $expected,
+          actual: "timeout (exit 124)",
+          diff_hint: "opencode was killed by timeout(1). Increase EVAL_MAX_SECONDS or check case prompt complexity.",
+          error: true
+        }]
+      }' > "$per_case_dir/checks.json"
+  elif [[ "$exit_code" != "0" ]] && [[ ! -s "$transcript" ]]; then
+    echo "[eval-harness] case $cid: opencode exited $exit_code with empty transcript" >&2
+    jq -n \
+      --arg cid "$cid" \
+      --arg actual "exit $exit_code, empty transcript" \
+      '{
+        passed: false,
+        total: 0,
+        pass_count: 0,
+        fail_count: 1,
+        checks: [{
+          kind: "harness_error",
+          passed: false,
+          failed_check_id: ("spawn_failed:" + $cid),
+          expected: "opencode produces transcript",
+          actual: $actual,
+          diff_hint: "opencode exited non-zero and wrote nothing. Check transcript.err for details.",
+          error: true
+        }]
+      }' > "$per_case_dir/checks.json"
+  else
+    run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
+  fi
 
   primary_passed="$(jq -r '.passed' "$per_case_dir/checks.json" 2>/dev/null || echo false)"
   stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'

@@ -53,12 +53,35 @@ run_check() {
   esac
 }
 
+score_shell_is_unsafe() {
+  local cmd="$1"
+  if echo "$cmd" | grep -qE '\$\(|`|>|<|&[^&]|;|\\$\{[^}]*\}'; then return 0; fi
+  if echo "$cmd" | grep -qE '(^|[[:space:]|;&])(rm|curl|wget|nc|ncat|sudo|chmod|chown|dd|mv|cp|ln|kill|killall|mkfifo|mknod|eval|exec|source|\.)([[:space:]]|$)'; then return 0; fi
+  return 1
+}
+
 score_shell() {
   local check_file="$1"; local workdir="$2"
   local cmd; cmd="$(yq -r '.cmd' "$check_file")"
   local expect_regex; expect_regex="$(yq -r '.expect_regex // empty' "$check_file")"
   local expect_min; expect_min="$(yq -r '.expect_min // empty' "$check_file")"
   local expect_exact; expect_exact="$(yq -r '.expect_exact // empty' "$check_file")"
+  local unsafe_opt_in; unsafe_opt_in="$(yq -r '.unsafe_shell // false' "$check_file" 2>/dev/null || echo false)"
+
+  if [[ "$unsafe_opt_in" != "true" && "${EVAL_ALLOW_UNSAFE_SHELL:-0}" != "1" ]] && score_shell_is_unsafe "$cmd"; then
+    jq -n \
+      --arg cmd "$cmd" \
+      '{
+        kind: "shell",
+        passed: false,
+        failed_check_id: ("shell:" + $cmd),
+        expected: "safe shell expression",
+        actual: "rejected by safety filter",
+        diff_hint: "command contains shell metacharacters or dangerous binaries (rm/curl/wget/sudo/etc.). Set `unsafe_shell: true` on this check or EVAL_ALLOW_UNSAFE_SHELL=1 to override.",
+        error: true
+      }'
+    return 0
+  fi
 
   local out
   out="$(cd "$workdir" && bash -c "$cmd" 2>&1 || true)"
@@ -248,15 +271,29 @@ score_output_not_contains() {
   local check_file="$1"; local transcript="$2"
   local needle; needle="$(yq -r '.value' "$check_file")"
 
+  if [[ ! -f "$transcript" ]] || [[ ! -s "$transcript" ]]; then
+    local reason="transcript missing"
+    [[ -f "$transcript" ]] && reason="transcript empty (0 bytes)"
+    jq -n --arg needle "$needle" --arg reason "$reason" --arg t "$transcript" '{
+      kind: "output_not_contains",
+      passed: false,
+      failed_check_id: ("output_not_contains:" + $needle),
+      expected: ("absence of " + $needle),
+      actual: $reason,
+      diff_hint: ("cannot verify absence — " + $reason + " at " + $t + ". This usually means opencode failed to start, crashed, or was killed by timeout. Re-run with --debug to inspect."),
+      error: true,
+      transcript_span: null
+    }'
+    return 0
+  fi
+
   local passed=true
   local line_no=""
-  if [[ -f "$transcript" ]]; then
-    local match
-    match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
-    if [[ -n "$match" ]]; then
-      passed=false
-      line_no="${match%%:*}"
-    fi
+  local match
+  match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
+  if [[ -n "$match" ]]; then
+    passed=false
+    line_no="${match%%:*}"
   fi
 
   jq -n \
