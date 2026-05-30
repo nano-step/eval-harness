@@ -3,7 +3,7 @@
 **v0.4.2** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
 > v0.4.2 closes all 8 BLOCKERs surfaced by independent audits: `EVAL_BYPASS` works, `score_shell` is sandboxed, fixture path-traversal blocked, `attribute.sh` portable across grep flavors, `fix_proposal` renders in `diff.md`, `--mode=2tier` aggregates verdicts correctly, empty/timed-out transcripts surface as harness errors rather than vacuous PASS.
 
-> **Scope statement.** eval-harness measures **behavior regression** for opencode skills. It is NOT a skill reviewer, NOT a quality grader, NOT a general-purpose evaluator. v0.4.0 covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool.
+> **Scope statement.** eval-harness measures **behavior regression** for opencode skills. It is NOT a skill reviewer, NOT a quality grader, NOT a general-purpose evaluator. v0.4.x covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool.
 
 ## What it does
 
@@ -71,7 +71,7 @@ scripts/eval/
 │   ├── yq-shim.sh + _yq.py   # python-backed yq fallback (no yq binary required)
 │   ├── skills_root.sh        # OPENCODE_SKILLS_ROOT resolution (env > walk-up > user-global)
 │   ├── config.sh             # project-config layer (.opencode/eval-harness.yaml)
-│   ├── registry.sh           # per-repo opt-in (43-repo workspace support)
+│   ├── registry.sh           # per-repo opt-in + `enable-workspace` bulk-register
 │   ├── preflight.sh          # opencode binary + API key probe (fail-fast)
 │   ├── lock.sh               # flock(1) coordinator (mkdir fallback for macOS)
 │   ├── spawn.sh              # invokes `opencode run` with sandboxed env
@@ -100,13 +100,13 @@ scripts/eval/
 - **2-tier execution mode**: `--mode=smoke` (cheap haiku, 1 LLM-judge sample) by default. `--mode=full` (configured model, 3 samples). `--mode=2tier` runs smoke, re-runs only failed cases with full.
 - **Dollar cost per case**: `pricing.json` curated rates for haiku-3-5, sonnet-4-6, opus-4-7. `summary.total_cost_usd` per run. Staleness gate (default 60 days).
 - **Per-(case,trigger) lockfile**: `flock(1)` serializes concurrent invocations on the same skill+case+trigger.
-- **Per-repo opt-in registry**: required for 43-repo workspaces. Manual trigger always runs; automated triggers (pre-push / sync-publish / stop-hook) skip non-enabled repos.
+- **Per-repo opt-in registry** + **bulk register**: required for multi-repo workspaces. Manual trigger always runs; automated triggers (pre-push / sync-publish / stop-hook) skip non-enabled repos. One command opts every skill-bearing repo in: `registry.sh enable-workspace --root=<path>`.
 - **Project-config layer**: `.opencode/eval-harness.yaml` walked up from cwd. Env vars win when explicitly set.
 - **Per-case model override**: case YAML `.model` field. Resolution: case > env > project config > built-in.
 - **3-sample byte-identical stability check** on FAIL → flaky tag if mismatch, no false attribution.
-- **Warn-only by default** for 7 days. Promote with `eval-harness promote`.
+- **Warn-only by default**. Promote with `eval-harness promote` (manual). Auto-promotion after N green days is a v0.6.0 item, not shipped yet.
 - **Two-stage `accept`**: default updates fixtures only; `--bless-env` required to update env-manifest (with confirmation).
-- **Heuristic auto-fix proposals** (v0.4.0): every FAILED check on a safe kind carries a `.fix_proposal` with `instruction` + `patch_snippet`. Never auto-applies — proposes only.
+- **Heuristic auto-fix proposals**: every FAILED check on a safe kind carries a `.fix_proposal` with `instruction` + `patch_snippet`. Rendered in `diff.md`. Never auto-applies — proposes only (applier is v0.5.0).
 - **Cost ceiling**: `EVAL_BUDGET_USD=2.00` hard daily cap. Tokens-based capture.
 - **One-command rerun** in every FAIL output.
 
@@ -118,7 +118,7 @@ Be explicit about what is and isn't checked. eval-harness evaluates **two layers
 
 ### Layer 1 — Behavior factors (eval-harness itself, this repo, this version)
 
-Every case in `.opencode/skills/<skill>/evals/cases/*.yaml` declares one or more **checks**. The harness runs **all checks** per case and aggregates failures. v0.4.0 supports **6 check kinds**:
+Every case in `.opencode/skills/<skill>/evals/cases/*.yaml` declares one or more **checks**. The harness runs **all checks** per case and aggregates failures. **6 check kinds** are supported today:
 
 | # | Check kind | What it scores | Reliability |
 |---|---|---|---|
@@ -160,7 +160,7 @@ A draft heuristic for design review lives at [`standards/skill-quality-v1.md`](.
 
 ## The review workflow — how factors get enforced
 
-There are **two active workflows + one scaffold** in v0.4.0. Each enforces a specific subset of factors at a specific gate.
+There are **two active workflows + one scaffold**. Each enforces a specific subset of factors at a specific gate.
 
 ### Workflow A — Behavior regression (automatic, every push)
 
@@ -242,28 +242,37 @@ EVAL_SKIP_AUTH_CHECK=1 eval-harness run --skill=<your-skill> --dry-run
 # Layer 1 — single check kind in isolation
 bash scripts/eval/lib/score.sh check <one-check.yaml> <workdir> <transcript>
 
-# Full test suite — 11 suites covering every primitive
+# Full test suite — 20 suites covering every primitive
 for t in scripts/eval/tests/*.sh; do bash "$t"; done
 # → all should print PASS
 ```
 
 If you need to know whether a specific factor is being checked, point at the case YAML — `.checks[]` is the complete list of factors that case enforces. There is no hidden scoring.
 
-### Verified test suites (11/11 green on `main`)
+### Verified test suites (20/20 green on `main`)
 
 | Suite | Covers |
 |---|---|
-| `regression_inject.sh`  | End-to-end demo: inject regression, assert SKILL_CHANGED + 6-field FAIL |
-| `case_model_override.sh` | Per-case `.model` field flows into env-manifest |
-| `project_config.sh`     | `.opencode/eval-harness.yaml` + env-var precedence |
-| `registry.sh`           | init / enable / disable / list / is-enabled / repo-name |
-| `lock_concurrency.sh`   | Two parallel same-case runs serialized via flock |
-| `pricing.sh`            | Cost math + staleness states (FRESH/STALE/MISSING) + token extraction |
-| `stability_inline.sh`   | 3-sample byte-identical hashing on FAIL |
-| `stop_hook.sh`          | Version gate + empty changed-set handling |
-| `llm_judge_unit.sh`     | PASS / FAIL / ERROR paths + 3-sample majority + missing-key fallback |
-| `twotier_mode.sh`       | Smoke pins haiku, full pins sonnet-4-6, 2tier orchestrates, invalid mode rejected |
-| `autofix.sh`            | Fix proposals for output_contains / output_not_contains / jq_path_contains / file_exists; null for llm_judge & passing checks |
+| `regression_inject.sh`        | End-to-end demo: inject regression, assert SKILL_CHANGED + 6-field FAIL |
+| `case_model_override.sh`      | Per-case `.model` field flows into env-manifest |
+| `project_config.sh`           | `.opencode/eval-harness.yaml` + env-var precedence |
+| `registry.sh`                 | init / enable / disable / list / is-enabled / repo-name |
+| `registry_bulk.sh`            | `enable-workspace` discover (all/skills/cases), dry-run, single-write merge, idempotency, preserves manual entries |
+| `lock_concurrency.sh`         | Two parallel same-case runs serialized via flock |
+| `pricing.sh`                  | Cost math + staleness states (FRESH/STALE/MISSING) + token extraction |
+| `stability_inline.sh`         | 3-sample byte-identical hashing on FAIL |
+| `stop_hook.sh`                | Version gate + empty changed-set handling |
+| `llm_judge_unit.sh`           | PASS / FAIL / ERROR paths + 3-sample majority + missing-key fallback |
+| `twotier_mode.sh`             | Smoke pins haiku, full pins sonnet-4-6, 2tier orchestrates, invalid mode rejected |
+| `twotier_aggregation.sh`      | 2tier escalation aggregates verdicts across all failed cases (closes BLK-6) |
+| `autofix.sh`                  | Fix proposals for safe check kinds; null for llm_judge & passing checks |
+| `fix_proposal_render.sh`      | `fix_proposal` renders in `diff.md` (closes BLK-5) |
+| `bypass.sh`                   | `EVAL_BYPASS=1` exits 0 + writes bypass event (closes BLK-1) |
+| `shell_safety.sh`             | `score_shell` filter accepts jq/pipes/wc; rejects rm/curl/`$()`/backtick/`>`; honors `unsafe_shell:` opt-in (closes BLK-2) |
+| `fixture_path_traversal.sh`   | Fixture copy rejects absolute paths + `..` segments (closes BLK-3) |
+| `attribution_portable.sh`     | Attribution works under GNU + BSD grep (closes BLK-4) |
+| `transcript_empty_guard.sh`   | Missing/empty transcript → harness error not vacuous PASS (closes BLK-7) |
+| `spawn_timeout_guard.sh`      | `timeout(1)` exit 124 → harness error not silent partial-transcript score (closes BLK-8) |
 
 ## Triggers
 
@@ -288,14 +297,60 @@ llm_judge:
 
 Walked up from cwd. Explicit env vars (`EVAL_MODEL`, `EVAL_BUDGET_USD`, etc.) still win.
 
-### Per-repo registry (required for 43-repo workspaces)
+### Per-repo registry (required for multi-repo workspaces)
+
+The registry is the opt-in gate for **automated** triggers (pre-push, sync-publish, stop-hook). Manual `eval-harness run` ignores the registry and always works.
 
 ```bash
-bash scripts/eval/lib/registry.sh enable <repo-name>   # opt repo into automated triggers
-bash scripts/eval/lib/registry.sh list                 # show enabled repos
+# One repo at a time:
+bash scripts/eval/lib/registry.sh enable <repo-name>
+bash scripts/eval/lib/registry.sh disable <repo-name>
+bash scripts/eval/lib/registry.sh list
+
+# Bulk: opt every skill-bearing repo under a root in one call.
+# (Filters out repos that have no .opencode/skills/ — registering them is noise.)
+bash scripts/eval/lib/registry.sh enable-workspace --root=/path/to/workspace
+
+# Preview without writing:
+bash scripts/eval/lib/registry.sh enable-workspace --root=/path/to/workspace --dry-run
+
+# Tighter filter — only repos that already have evals/cases/*.yaml:
+bash scripts/eval/lib/registry.sh enable-workspace --root=/path --filter=cases
+
+# Loosest filter — every .git repo under root, even ones with no skills:
+bash scripts/eval/lib/registry.sh enable-workspace --root=/path --filter=all
 ```
 
-Default path: `~/.config/opencode/eval-harness/registry.yaml`. Override with `$EVAL_HARNESS_REGISTRY`.
+Filter values: `skills` (default — repos with `.opencode/skills/<X>/`), `cases` (repos with eval cases written), `all` (every git repo).
+
+Bulk-register is **idempotent**: re-running with the same args adds zero new entries. It **preserves** any repos enabled manually beforehand (set union, not replace).
+
+Default registry path: `~/.config/opencode/eval-harness/registry.yaml`. Override with `$EVAL_HARNESS_REGISTRY`.
+
+### Wiring the pre-push hook everywhere
+
+Git hooks live inside each repo's `.git/hooks/`. To get the eval-harness pre-push hook on **every** repo on the machine without per-repo install, use git's `core.hooksPath`:
+
+```bash
+# 1. Make a global hooks directory
+mkdir -p ~/.config/git/hooks
+
+# 2. Drop the eval-harness pre-push hook in
+cp $(npm root -g)/@nano-step/eval-harness/scripts/eval/hooks/pre-push ~/.config/git/hooks/
+chmod +x ~/.config/git/hooks/pre-push
+
+# 3. Tell git to use it globally
+git config --global core.hooksPath ~/.config/git/hooks
+```
+
+Now every `git push` on this machine fires the hook. The hook only invokes `eval-harness` when the push touches `.opencode/skills/<X>/` files **and** the repo is opted in via the registry. All other pushes return immediately with no overhead.
+
+Per-repo install (alternative) for a single repo:
+
+```bash
+cd /path/to/your/repo
+bash $(npm root -g)/@nano-step/eval-harness/scripts/eval/install-hooks.sh
+```
 
 ### Pricing data
 
@@ -307,9 +362,10 @@ Default path: `~/.config/opencode/eval-harness/registry.yaml`. Override with `$E
 2. **No `--max-turns` / `--skills` flags exist in opencode** → enforced via filesystem (ephemeral `OPENCODE_CONFIG_DIR` + external `timeout(1)` + token-counted kill).
 3. **No real network calls** in default mode. `--realenv` flag for opt-in quarantined cases.
 4. **LLM judge requires `ANTHROPIC_API_KEY`.** Without one, `llm_judge` checks return `verdict: null` with `reason: judge_unavailable` — this is by design (we never fabricate a verdict). Set the key to use prose-output evaluation.
-5. **Deterministic mode only** (T=0, k=1). Stochastic `pass@k` deferred to v0.5+.
-6. **Auto-fix proposes, never applies.** v0.4.0 attaches `fix_proposal` to FAILED checks but `auto_apply: false`. Application logic is v0.5.0+.
-7. **Cost is captured, not gated.** Per-case + per-run dollar amounts surface in `results.json`, but only `EVAL_BUDGET_USD` (daily token cap) hard-stops execution. Cost-regression gating is v0.5.0+.
+5. **Deterministic mode only** (T=0, k=1). Stochastic `pass@k` deferred to v0.7.0.
+6. **Auto-fix proposes, never applies.** Each FAILED check carries a `fix_proposal` (visible in `diff.md`) but `auto_apply: false`. An `eval-harness apply` command is tracked in v0.5.0.
+7. **Cost is captured, not gated.** Per-case + per-run dollar amounts surface in `results.json` and `diff.md`, but only `EVAL_BUDGET_USD` (daily token cap, per-process) hard-stops execution. Shared-state budget ledger + cost-regression gating are tracked in v0.5.0.
+8. **No `--strict` mode yet.** Warn-only is the only mode in v0.4.x. CI-grade gating requires `eval-harness promote` (manual) or waiting for v0.5.0's `--strict` flag (issue #10).
 
 ## Authoring a case (5 min)
 
@@ -378,7 +434,7 @@ Run `eval-harness run --skill=pr-code-reviewer --mode=2tier` to evaluate cheaply
 
 | Version | Released | Highlights |
 |---|---|---|
-| **v0.4.2** | 2026-05-30 | Hardening: closed all 8 BLOCKERs from audits — bypass crash, score_shell RCE, fixture traversal, macOS attribution, fix_proposal rendering, 2tier aggregation, empty transcripts, timeout handling |
+| **v0.4.2** | 2026-05-30 | Hardening: closed all 8 audit BLOCKERs — bypass crash, score_shell RCE, fixture traversal, macOS attribution, fix_proposal rendering, 2tier aggregation, empty transcripts, timeout handling |
 | v0.4.1 | 2026-05-30 | Fix npm-link symlink resolution in entrypoint scripts |
 | v0.4.0 | 2026-05-29 | Heuristic auto-fix proposer for safe check kinds |
 | v0.3.0 | 2026-05-29 | LLM judge (sonnet-4-6 / opus-4-7, 3-sample majority) · `pr-code-reviewer` demo · 2-tier mode |
@@ -386,68 +442,85 @@ Run `eval-harness run --skill=pr-code-reviewer --mode=2tier` to evaluate cheaply
 | v0.1.1 | 2026-05-29 | Patch: model ID + demo path + factors README + SQS-1 honesty |
 | v0.1.0 | 2026-05-28 | Initial release: bash + pre-push + sync-publish + 4-class attribution + omo-session-distiller demo |
 
+Unreleased post-v0.4.2 work on `main`:
+- `registry.sh enable-workspace` — bulk-register all skill-bearing repos under a workspace root (will ship as part of v0.4.3)
+
 See [`CHANGELOG.md`](./CHANGELOG.md) for details.
 
 ## Roadmap
 
-v0.4.2 (2026-05-30) closes all 8 BLOCKERs surfaced by independent audits.
-See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the remaining HIGH/MEDIUM items.
+v0.4.2 (2026-05-30) closed all 8 BLOCKERs surfaced by independent audits. v0.4.3 work has started — bulk workspace registration shipped, 9 polish items remain.
 
-**Want to help?** 25 issues are open with clear scope — [12 are `good first issue`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped fixes) and [12 are `help wanted`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22help+wanted%22) (real features). See the [📍 pinned roadmap issue #26](https://github.com/nano-step/eval-harness/issues/26) and [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the remaining HIGH/MEDIUM items, [`CONTRIBUTING.md`](./CONTRIBUTING.md) for how to land a PR, and the [📍 pinned roadmap issue #26](https://github.com/nano-step/eval-harness/issues/26) for the latest priorities.
 
-### v0.4.2 — Hardening release ✅ shipped
+**Want to help?** 26 issues are open with clear scope. [Browse `good first issue`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped) or [`help wanted`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22help+wanted%22) (larger features needing design discussion).
+
+### v0.4.2 — Hardening release ✅ shipped 2026-05-30
 
 All 8 BLOCKERs closed:
 - ✅ Fixed `EVAL_BYPASS=1` crash (function-before-definition)
 - ✅ Sandboxed `score_shell`'s `bash -c "$cmd"` with metachar/dangerous-binary filter
 - ✅ Fixed fixture-copy subshell + path-traversal guard (absolute paths + `..` blocked)
 - ✅ Fixed `attribute.sh` BRE alternation (works on macOS BSD grep now)
-- ✅ Rendered `.fix_proposal` in `diff.md` (v0.4.0 feature finally visible)
+- ✅ Rendered `.fix_proposal` in `diff.md` (auto-fix feature finally visible)
 - ✅ Fixed `--mode=2tier` verdict aggregation across escalated cases
 - ✅ Treat empty/missing transcript as harness error, not vacuous PASS
 - ✅ Handle `timeout(1)` exit 124 as harness error
 
-### v0.4.3 — Correctness polish (~1 day)
+### v0.4.3 — Correctness polish (in progress)
 
-- `trap` for lock fd / mkdir-lock cleanup on SIGINT/SIGTERM
-- Larger run-ID collision space (`$RANDOM$RANDOM` or `openssl rand`)
-- `flock` the `history.ndjson` append
-- LLM-judge verdict parser: scan only first line of response
-- Cap `samples:` field in case YAML (prevent runaway cost)
-- Delete or fix `propose_fixes_for_run` tautology bug (dead code today)
-- Preflight `python3` + `pyyaml` presence (yq-shim silently breaks without them)
-- Remove `$workdir` PATH-prepend or restrict to `$workdir/bin/` only
+- ✅ **`registry.sh enable-workspace`** — bulk-register all skill-bearing repos under a workspace root (shipped post-v0.4.2)
+- `trap` for lock fd / mkdir-lock cleanup on SIGINT/SIGTERM (issue #1)
+- Larger run-ID collision space — `$RANDOM$RANDOM` or `openssl rand` (#2)
+- Preflight `python3` + `pyyaml` presence (#3)
+- LLM-judge verdict parser: scan only first line of response (#4)
+- `flock` the `history.ndjson` append (#5)
+- Cap `samples:` field in case YAML — prevent runaway cost (#6)
+- Delete dead-code `propose_fixes_for_run` tautology bug (#7)
+- Detect 'no expectation' misconfig in shell check (#8)
+- Remove `$workdir` PATH-prepend in spawn.sh (#9)
+- macOS CI matrix (#24)
 
-### v0.5.0 — CI-ready (~1 week)
+### v0.5.0 — CI-ready
 
-The version that's actually safe to recommend for CI/CD gating.
+The first version safe to recommend for CI/CD gating.
 
-- `--strict` mode (flip warn-only off; exit 12 on first regression)
-- `--ci` mode + JUnit / SARIF reporter + PR-comment integration
-- Shared-state daily budget ledger (`EVAL_BUDGET_USD` actually enforced across runs)
-- Cost-regression gating (block PRs that raise per-case $ vs baseline)
-- Self-eat suite: `skills/eval-harness/evals/cases/*.yaml` for the harness itself
-- Auto-fix **applier** (v0.4.0 only proposes; v0.5 would apply with explicit confirmation)
+- `--strict` mode — flip warn-only off; exit 12 on first regression (#10)
+- `--ci` mode + JUnit / SARIF reporter + PR-comment integration (#11)
+- Shared-state daily budget ledger — `EVAL_BUDGET_USD` actually enforced across runs (#12)
+- Self-eat suite: `skills/eval-harness/evals/cases/*.yaml` for the harness itself (#13)
+- Auto-fix **applier** — `eval-harness apply --run=<id>` (#14)
+- Cost-regression gating — block PRs that raise per-case $ vs baseline
+- Semver + deprecation policy documented (#22)
+- GitHub Actions example workflow (#23)
+- End-to-end demo script (#25)
 
 ### v0.6.0 — DX polish
 
-- Branch-filter for pre-push (skip WIP branches)
-- Cross-skill behavioral interaction diagnosis (which skill broke which?)
-- Automatic warn-only → blocking promotion after N green days
-- A/B mode (`eval-harness ab --base=X --candidate=Y`)
+- Pre-push branch filter — skip WIP/draft branches (#15)
+- Cross-skill behavioral interaction diagnosis (#16)
+- Automatic warn-only → blocking promotion after N green days (#17)
+- A/B mode — `eval-harness ab --base=X --candidate=Y` (#18)
 - opencode Stop-hook activation once plugin API lands
 
 ### v0.7.0 — Scale
 
-- Anthropic API rate-limit handling + exponential backoff
+- Anthropic API rate-limit handling + exponential backoff (#19)
+- Judge response caching by `(rubric_hash + artifact_hash)` (#20)
+- Stochastic `pass@k` mode — T>0, multiple samples per case (#21)
 - Per-run cost cap (`EVAL_BUDGET_USD` currently daily-only)
-- Judge response caching by `(rubric_hash + artifact_hash)` — don't re-burn tokens on identical artifacts
-- Stochastic `pass@k` mode (T>0, multiple samples)
 - `MCP_FLAKE` + `HARNESS_BUG` attribution classes
 
 ### v1.0.0 — Stable
 
-Trigger: all BLOCKERs from v0.4.1 audits closed; harness self-eaten on its own evals; CI-proven on at least 2 external repos; semver + deprecation policies published; `--ci` mode adopted by ≥1 real CI pipeline.
+Trigger criteria (all must be true):
+
+- ✅ All BLOCKERs from 2026-05-30 audits closed (done in v0.4.2)
+- All HIGH severity items closed (target: v0.4.3)
+- Self-eaten on own evals (#13 → v0.5.0)
+- Semver + deprecation policy published (#22 → v0.5.0)
+- CI-proven on ≥1 external repo (community signal)
+- 30 days of stable releases with no critical bug reports
 
 ### Out of scope (separate project)
 
