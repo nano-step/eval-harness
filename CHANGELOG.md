@@ -4,6 +4,27 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-05-30
+
+### Fixed (8 BLOCKERs surfaced by 2026-05-30 audits)
+
+- **BLK-1**: `EVAL_BYPASS=1` no longer crashes. Bypass logic moved above all dependent state and renamed the helper to `log_bypass_event` to avoid the function-before-definition trap. `run.sh:177`.
+- **BLK-2**: `score_shell` now rejects YAML-supplied commands containing shell metacharacters (`$()`, backticks, `>`, `<`, `&`, `;`, `\\${...}`) and dangerous binaries (`rm`, `curl`, `wget`, `nc`, `sudo`, `dd`, `eval`, `exec`, `source`, etc.) by default. Opt in per-check with `unsafe_shell: true` or globally with `EVAL_ALLOW_UNSAFE_SHELL=1`. `score.sh:51`.
+- **BLK-3**: Fixture-copy loop now uses `< <(...)` instead of `| while` (errors propagate), rejects absolute paths and `..` segments, and resolves each `dest` against the workdir with `os.path.normpath` before copying. `run.sh:249`.
+- **BLK-4**: Attribution now uses `grep -qE "^(skill_bundle_sha|skill_sha)$"` (ERE) instead of `grep -qx "skill_bundle_sha\\|skill_sha"` (broken on macOS BSD grep). `SKILL_CHANGED` fires correctly across both grep flavors. `attribute.sh:18`.
+- **BLK-5**: `fix_proposal` is now rendered in `diff.md` under each failed check (kind + confidence + instruction + patch_snippet). The v0.4.0 feature is finally visible to users. `diff.sh:179`.
+- **BLK-6**: `--mode=2tier` now aggregates verdicts across all escalated cases into a single `2tier-<timestamp>/results.json` with `summary.{full_pass, full_fail, regression_count}` and `contributing_run_ids[]`. Exits 12 if any escalated case is a confirmed regression vs baseline, instead of returning the rc of the last loop iteration. `twotier.sh`.
+- **BLK-7**: `output_not_contains` returns `passed: false, error: true` on missing or empty transcripts instead of vacuous-PASS. A skill that fails to run no longer scores PASS on negative checks. `score.sh:247`.
+- **BLK-8**: `timeout(1)` exit 124 surfaces as a `harness_error` kind check with explicit diagnostic, rather than silently scoring against a partial transcript. Same handling for any non-zero spawn exit + empty transcript. `run.sh:326`.
+
+### Added
+
+- 8 new regression tests guarding each BLOCKER fix: `bypass.sh`, `shell_safety.sh`, `fixture_path_traversal.sh`, `attribution_portable.sh`, `fix_proposal_render.sh`, `twotier_aggregation.sh`, `transcript_empty_guard.sh`, `spawn_timeout_guard.sh`.
+
+### Verified
+
+- 19/19 test suites green (v0.4.1's 11 + 8 new BLOCKER-guard suites).
+
 ## [0.4.1] — 2026-05-30
 
 ### Fixed

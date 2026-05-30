@@ -1,4 +1,4 @@
-# Known Issues — eval-harness v0.4.1
+# Known Issues — eval-harness v0.4.2
 
 This document lists every confirmed bug, gap, and limitation in the currently-shipped code.
 Surfaced by two independent audits (explore + oracle) on 2026-05-30. Updated when fixed.
@@ -7,9 +7,13 @@ Surfaced by two independent audits (explore + oracle) on 2026-05-30. Updated whe
 
 ---
 
-## 🔴 BLOCKERs (correctness bugs in shipped code)
+## ✅ BLOCKERs — all 8 closed in v0.4.2
 
-These bugs affect behavior the README claims works. Pinned for fix in **v0.4.2**.
+The 8 BLOCKERs documented below were all fixed in v0.4.2 (2026-05-30). The original entries are preserved for history. Each fix landed with a regression test that runs as part of the standard test suite.
+
+---
+
+## ✅ BLOCKERs (closed v0.4.2 — original descriptions preserved for history)
 
 ### BLK-1 · `EVAL_BYPASS=1` crashes instead of bypassing
 - **File**: [scripts/eval/run.sh:123](./scripts/eval/run.sh)
@@ -137,16 +141,19 @@ These are features that don't exist yet, not bugs in what does exist.
 
 ---
 
-## What's actually safe to use today (v0.4.1)
+---
+
+## What's actually safe to use today (v0.4.2 — post-hardening)
 
 | Use case | Status |
 |---|---|
-| Run on your own structured-output skill | ✅ **OK** — write cases, run `baseline`, then `run` |
-| Run on your own prose-output skill with `llm_judge` | ⚠️ **OK with reservations** — LLM judge is the strongest module, but you'll hit BLK-4 (macOS attribution) and BLK-5 (no `fix_proposal` rendering) |
-| Wire into `git pre-push` for your own repos | ⚠️ **OK in warn-only mode** — warn-only is the default so blast radius is bounded |
-| CI/CD gating on PR builds | ❌ **Not ready** — no `--strict`, no JUnit, no shared budget state |
-| Run cases authored by untrusted parties | ❌ **NO** — BLK-2 (RCE via `shell` check kind) + BLK-3 (path traversal via fixtures) |
+| Run on your own structured-output skill | ✅ **Ready** — write cases, run `baseline`, then `run` |
+| Run on your own prose-output skill with `llm_judge` | ✅ **Ready** — needs `ANTHROPIC_API_KEY` |
+| Wire into `git pre-push` for your own repos | ✅ **Ready in warn-only mode** (default) |
+| `--mode=2tier` aggregation | ✅ **Fixed in v0.4.2** — now correctly returns exit 12 if any escalated case is a confirmed regression |
+| CI/CD gating on PR builds | ⚠️ Still needs `--strict` mode (v0.5.0) + JUnit/SARIF (v0.5.0) |
+| Run cases authored by untrusted parties | ⚠️ **Now safer** with default-on shell-safety filter (v0.4.2 BLK-2), but the threat model is "your case YAMLs", not "arbitrary user input" — review case YAMLs before importing |
 
 ---
 
-Last updated: 2026-05-30 (v0.4.1)
+Last updated: 2026-05-30 (v0.4.2)

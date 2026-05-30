@@ -36,6 +36,18 @@ spawn_opencode() {
 
   mkdir -p "$sandbox/home" "$sandbox/opencode/skills" "$sandbox/nano-brain"
 
+  for auth_src in \
+    "${OPENCODE_AUTH_FILE:-}" \
+    "$HOME/.local/share/opencode/auth.json" \
+    "$HOME/.config/opencode/auth.json"
+  do
+    if [[ -n "$auth_src" && -f "$auth_src" ]]; then
+      mkdir -p "$sandbox/home/.local/share/opencode"
+      cp "$auth_src" "$sandbox/home/.local/share/opencode/auth.json"
+      break
+    fi
+  done
+
   local real_skills_root
   real_skills_root="$(resolve_skills_root)"
   for skill in "${skills_to_load[@]}"; do
