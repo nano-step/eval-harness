@@ -1,0 +1,42 @@
+name: Case recipe (eval pattern to share)
+description: A worked example of a check pattern you wrote that caught a real regression
+title: "[recipe] "
+labels: ["docs", "case-recipe"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We collect community-contributed eval recipes for the future "examples gallery". This is the form to submit one.
+        
+        A good recipe = **redacted case YAML** + **what regression it catches** + **why other tools missed it**.
+
+  - type: input
+    id: name
+    attributes:
+      label: One-line recipe name
+      placeholder: "Detecting silent prompt-injection refusal in a customer-support agent"
+    validations:
+      required: true
+
+  - type: textarea
+    id: yaml
+    attributes:
+      label: The case YAML (redacted)
+      description: Strip secrets and proprietary content. Keep the check kinds and structure.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: catches
+    attributes:
+      label: What regression does this catch?
+      description: Be concrete — "the LLM started ignoring tool_use_id in v0.3 of our prompt and silently returned plain text"
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-not-other
+    attributes:
+      label: Why doesn't <other eval tool> catch this?
+      description: Optional but useful. promptfoo, DeepEval, Ragas, OpenAI Evals — why didn't they work for you here?

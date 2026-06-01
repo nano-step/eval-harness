@@ -1,0 +1,48 @@
+name: Feature request
+description: A new check kind, runner, integration, or workflow
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening: have a look at [the roadmap issue #26](https://github.com/nano-step/eval-harness/issues/26). Many ideas are already scoped there. If yours overlaps, comment on the existing thread instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the user-visible pain. "I wish I could X" or "When Y happens, eval-harness can't tell me Z". Skip "it would be nice if…" features.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed shape
+      description: What would the YAML / CLI / output look like? Even a sketch helps.
+      render: yaml
+      placeholder: |
+        checks:
+          - kind: <your-new-kind>
+            field_a: ...
+            field_b: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about? Why are they worse?
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope check
+      description: |
+        eval-harness is a **behavior-regression** harness. It is NOT a skill design reviewer, NOT a quality grader, NOT a general LLM eval framework. Read the [scope statement](https://github.com/nano-step/eval-harness#scope-statement).
+        
+        Is your feature in scope? If you're not sure, that's fine — say so and we'll discuss.
+    validations:
+      required: true

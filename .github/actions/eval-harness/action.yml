@@ -1,0 +1,224 @@
+name: "eval-harness"
+description: "Behavior-regression testing for LLM agents — 4-class attribution, 6-field FAIL, $-cost gating."
+author: "nano-step"
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  skill:
+    description: "Skill name to evaluate. Required unless `all-changed` is true."
+    required: false
+  all-changed:
+    description: "Detect changed skills from the PR/push diff and evaluate each. Mutually exclusive with `skill`."
+    required: false
+    default: "false"
+  mode:
+    description: "Execution mode: smoke | full | 2tier (default: 2tier)."
+    required: false
+    default: "2tier"
+  budget-usd:
+    description: "Daily $ cost ceiling for the eval run (EVAL_BUDGET_USD)."
+    required: false
+    default: "2.00"
+  fail-on-regression:
+    description: "Whether the action exits with code 12 on regression. Set false for warn-only."
+    required: false
+    default: "true"
+  anthropic-api-key:
+    description: "Anthropic API key (only required if any case uses kind: llm_judge)."
+    required: false
+  opencode-version:
+    description: "opencode CLI version to install (default: latest)."
+    required: false
+    default: "latest"
+  eval-harness-version:
+    description: "@nano-step/eval-harness version to install (default: latest)."
+    required: false
+    default: "latest"
+
+outputs:
+  verdict:
+    description: "PASS | REGRESSION | FLAKY | HARNESS_ERROR"
+    value: ${{ steps.run.outputs.verdict }}
+  attribution:
+    description: "On regression: SKILL_CHANGED | FIXTURE_STALE | MODEL_CHANGED | UNKNOWN_DRIFT"
+    value: ${{ steps.run.outputs.attribution }}
+  total-cost-usd:
+    description: "Total $ cost of the eval run"
+    value: ${{ steps.run.outputs.total_cost_usd }}
+  report-path:
+    description: "Filesystem path to the run's diff.md"
+    value: ${{ steps.run.outputs.report_path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -z "${{ inputs.skill }}" && "${{ inputs.all-changed }}" != "true" ]]; then
+          echo "::error::Either 'skill' or 'all-changed: true' must be set."
+          exit 64
+        fi
+        if [[ -n "${{ inputs.skill }}" && "${{ inputs.all-changed }}" == "true" ]]; then
+          echo "::error::Cannot set both 'skill' and 'all-changed'. Pick one."
+          exit 64
+        fi
+        echo "::notice::eval-harness action validated inputs."
+
+    - name: Install jq + yq (python3 already present)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v jq >/dev/null; then
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq
+        fi
+        if ! command -v yq >/dev/null; then
+          pip install --quiet yq
+        fi
+        echo "jq: $(jq --version)"
+        echo "yq: $(yq --version)"
+
+    - name: Install @nano-step/eval-harness
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.eval-harness-version }}" == "latest" ]]; then
+          npm install -g @nano-step/eval-harness
+        else
+          npm install -g "@nano-step/eval-harness@${{ inputs.eval-harness-version }}"
+        fi
+        echo "eval-harness: $(eval-harness --version 2>&1 | head -1)"
+
+    - name: Install opencode CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.opencode-version }}" == "latest" ]]; then
+          npm install -g opencode-ai
+        else
+          npm install -g "opencode-ai@${{ inputs.opencode-version }}"
+        fi
+        echo "opencode: $(opencode --version 2>&1 | head -1)"
+
+    - name: Detect changed skills (when all-changed=true)
+      id: detect
+      if: ${{ inputs.all-changed == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+        else
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+        fi
+        echo "Diff range: $BASE_SHA .. $HEAD_SHA"
+        CHANGED_SKILLS=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
+          | grep -E '^.opencode/skills/[^/]+/' \
+          | awk -F/ '{print $3}' \
+          | sort -u \
+          | paste -sd "," -)
+        echo "changed_skills=$CHANGED_SKILLS" >> "$GITHUB_OUTPUT"
+        echo "Changed skills: $CHANGED_SKILLS"
+
+    - name: Run eval-harness
+      id: run
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        EVAL_BUDGET_USD: ${{ inputs.budget-usd }}
+        EVAL_CI: "1"
+      run: |
+        set -euo pipefail
+
+        if [[ "${{ inputs.all-changed }}" == "true" ]]; then
+          SKILLS="${{ steps.detect.outputs.changed_skills }}"
+          if [[ -z "$SKILLS" ]]; then
+            echo "::notice::No skills changed. Skipping eval."
+            echo "verdict=PASS" >> "$GITHUB_OUTPUT"
+            echo "total_cost_usd=0.00" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        else
+          SKILLS="${{ inputs.skill }}"
+        fi
+
+        OVERALL_EXIT=0
+        REPORT_PATHS=()
+
+        IFS=',' read -ra SKILL_LIST <<< "$SKILLS"
+        for skill in "${SKILL_LIST[@]}"; do
+          skill="$(echo "$skill" | xargs)"
+          [[ -z "$skill" ]] && continue
+          echo "::group::eval-harness run --skill=$skill"
+          set +e
+          eval-harness run --skill="$skill" --mode="${{ inputs.mode }}"
+          rc=$?
+          set -e
+          echo "::endgroup::"
+          if [[ "$rc" -ne 0 && "$rc" -ne 12 ]]; then
+            echo "::error::harness error for skill=$skill (exit $rc)"
+            OVERALL_EXIT="$rc"
+          fi
+          if [[ "$rc" -eq 12 ]]; then
+            OVERALL_EXIT=12
+          fi
+        done
+
+        # Aggregate verdict + attribution + cost from the latest run dir
+        LATEST_RUN_DIR=$(ls -1dt runs/* 2>/dev/null | head -1 || echo "")
+        if [[ -n "$LATEST_RUN_DIR" && -f "$LATEST_RUN_DIR/summary.json" ]]; then
+          VERDICT=$(jq -r '.verdict // "UNKNOWN"' "$LATEST_RUN_DIR/summary.json")
+          ATTRIBUTION=$(jq -r '.attribution // ""' "$LATEST_RUN_DIR/summary.json")
+          COST=$(jq -r '.total_cost_usd // 0' "$LATEST_RUN_DIR/summary.json")
+          REPORT_PATH="$LATEST_RUN_DIR/diff.md"
+        else
+          VERDICT="HARNESS_ERROR"; ATTRIBUTION=""; COST="0.00"; REPORT_PATH=""
+        fi
+
+        {
+          echo "verdict=$VERDICT"
+          echo "attribution=$ATTRIBUTION"
+          echo "total_cost_usd=$COST"
+          echo "report_path=$REPORT_PATH"
+        } >> "$GITHUB_OUTPUT"
+
+        # Job summary
+        {
+          echo "## eval-harness result"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Verdict | \`$VERDICT\` |"
+          echo "| Attribution | \`$ATTRIBUTION\` |"
+          echo "| Cost (USD) | \`\$$COST\` |"
+          echo "| Mode | \`${{ inputs.mode }}\` |"
+          echo "| Report | \`$REPORT_PATH\` |"
+          echo ""
+          if [[ -f "$REPORT_PATH" ]]; then
+            echo "### 6-field FAIL detail"
+            echo ""
+            echo '```'
+            head -60 "$REPORT_PATH"
+            echo '```'
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [[ "$OVERALL_EXIT" -eq 12 && "${{ inputs.fail-on-regression }}" == "true" ]]; then
+          echo "::error::eval-harness detected a regression. See job summary."
+          exit 12
+        fi
+        exit "$OVERALL_EXIT"
+
+    - name: Upload run artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: eval-harness-run-${{ github.run_id }}
+        path: runs/
+        if-no-files-found: ignore
+        retention-days: 30

@@ -1,0 +1,10 @@
+# Funding options for @nano-step/eval-harness
+# These are entirely optional. The project is MIT-licensed and developed in the open.
+# Sponsorships go toward Anthropic API credits used to run the LLM-judge regression suite.
+
+github: [hoainho]
+# patreon: nano-step           # set when configured
+# open_collective: nano-step   # set when configured
+# ko_fi: hoainho               # set when configured
+# tidelift: npm/@nano-step/eval-harness
+# custom: ["https://nano-step.com/sponsor"]
