@@ -29,6 +29,7 @@ source "$LIB/score.sh"
 source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
+source "$LIB/portable.sh"
 
 VERSION="0.4.2"
 
@@ -236,7 +237,10 @@ mkdir -p "$RUN_DIR"
 if [[ -n "$CASE_ID" ]]; then
   CASE_FILES=("$CASES_DIR/$CASE_ID.yaml")
 else
-  mapfile -t CASE_FILES < <(find "$CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
+  CASE_FILES=()
+  while IFS= read -r case_file; do
+    CASE_FILES+=("$case_file")
+  done < <(find "$CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
 fi
 
 if [[ ${#CASE_FILES[@]} -eq 0 ]]; then
@@ -274,7 +278,10 @@ for case_file in "${CASE_FILES[@]}"; do
   cid="$(yq -r '.id' "$case_file")"
   prompt="$(yq -r '.prompt' "$case_file")"
   description="$(yq -r '.description // ""' "$case_file")"
-  mapfile -t skills_loaded < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
+  skills_loaded=()
+  while IFS= read -r skill_name; do
+    [[ -n "$skill_name" ]] && skills_loaded+=("$skill_name")
+  done < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
   [[ ${#skills_loaded[@]} -eq 0 ]] && skills_loaded=("$SKILL")
 
   case_model="$(yq -r '.model // ""' "$case_file" 2>/dev/null || echo "")"
@@ -497,7 +504,7 @@ for case_file in "${CASE_FILES[@]}"; do
   stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
   if [[ "$STABILITY_SAMPLES" -gt 1 && "$primary_passed" == "false" ]]; then
     echo "[eval-harness] case $cid FAILed — running $((STABILITY_SAMPLES - 1)) stability sample(s)" >&2
-    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | portable_sha256_stdin | cut -d' ' -f1)")
     s=2
     while [[ "$s" -le "$STABILITY_SAMPLES" ]]; do
       sample_dir="$per_case_dir/stability/sample-$s"
@@ -522,7 +529,7 @@ for case_file in "${CASE_FILES[@]}"; do
           ;;
       esac
       run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
-      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | portable_sha256_stdin | cut -d' ' -f1)")
       s=$((s+1))
     done
     first="${hashes[0]}"

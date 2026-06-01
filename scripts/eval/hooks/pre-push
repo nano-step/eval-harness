@@ -6,6 +6,47 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/../lib/portable.sh" ]]; then
+  # shellcheck source=../lib/portable.sh
+  source "$SCRIPT_DIR/../lib/portable.sh"
+else
+  run_with_timeout() {
+    local max_seconds="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$max_seconds" "$@"
+      return $?
+    fi
+    if command -v gtimeout >/dev/null 2>&1; then
+      gtimeout "$max_seconds" "$@"
+      return $?
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$max_seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+cmd = sys.argv[2:]
+if not cmd:
+    sys.exit(2)
+try:
+    completed = subprocess.run(cmd, timeout=timeout)
+    sys.exit(completed.returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+except FileNotFoundError:
+    print(f"[eval-harness] command not found: {cmd[0]}", file=sys.stderr)
+    sys.exit(127)
+PY
+      return $?
+    fi
+    echo "[eval-harness] missing timeout tool: install timeout, gtimeout, or python3" >&2
+    return 127
+  }
+fi
+
 REMOTE="${1:-origin}"
 URL="${2:-}"
 
@@ -23,7 +64,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   while IFS= read -r f; do
     case "$f" in
       .opencode/skills/*/*|*/.opencode/skills/*/*)
-        skill="$(echo "$f" | grep -oP '\.opencode/skills/\K[^/]+' | head -1 || true)"
+        skill_path="${f#*.opencode/skills/}"
+        skill="${skill_path%%/*}"
         [[ -n "$skill" ]] && affected_skills+=("$skill")
         ;;
     esac
@@ -41,7 +83,9 @@ echo "$unique_skills" | sed 's/^/  - /' >&2
 EVAL_HARNESS_BIN="${EVAL_HARNESS_BIN:-eval-harness}"
 exit_code=0
 for skill in $unique_skills; do
-  if ! timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push; then
+  if run_with_timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push; then
+    :
+  else
     exit_code=$?
   fi
 done
