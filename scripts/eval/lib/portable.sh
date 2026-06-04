@@ -27,6 +27,23 @@ portable_sha256_stdin() {
   return 127
 }
 
+portable_sort_nul() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import sys
+
+items = sys.stdin.buffer.read().split(b"\0")
+if items and items[-1] == b"":
+    items.pop()
+for item in sorted(items):
+    sys.stdout.buffer.write(item + b"\0")
+'
+    return $?
+  fi
+  echo "[eval-harness] missing sort helper: install python3" >&2
+  return 127
+}
+
 resolve_timeout_bin() {
   if command -v timeout >/dev/null 2>&1; then
     command -v timeout
@@ -72,4 +89,4 @@ PY
   return 127
 }
 
-export -f portable_sha256_file portable_sha256_stdin resolve_timeout_bin run_with_timeout
+export -f portable_sha256_file portable_sha256_stdin portable_sort_nul resolve_timeout_bin run_with_timeout

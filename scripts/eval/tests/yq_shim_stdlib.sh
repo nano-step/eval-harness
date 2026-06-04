@@ -13,6 +13,11 @@ skills_loaded: [omo-session-distiller, pr-code-reviewer]
 setup:
   fixtures:
     "session-input.json": fixtures/session-input.json
+commented_setup: # inline comment before nested mapping
+  enabled: true
+optional_items:
+  - # comment-only empty item
+  - named
 prompt: |
   Read the fixture.
   Write a result.
@@ -23,7 +28,7 @@ checks:
     file: result.json
     path: "[.writes[].tags[]] | unique"
     contains: ["decision", "architecture"]
-  - shell:
+  - shell: # inline comment before nested mapping
       cmd: "echo nested"
       expect_exact: nested
 llm_judge:
@@ -51,6 +56,16 @@ skills="$(python3 "$YQ" -r '.skills_loaded[]' "$WORK/case.yaml" | paste -sd ' ' 
 
 [[ "$(python3 "$YQ" -r '.unsafe_shell // false' "$WORK/case.yaml")" == "true" ]] || {
   echo "FAIL: inline comment changed scalar value" >&2
+  exit 1
+}
+
+[[ "$(python3 "$YQ" -r '.commented_setup.enabled // false' "$WORK/case.yaml")" == "true" ]] || {
+  echo "FAIL: inline comment before nested mapping failed" >&2
+  exit 1
+}
+
+[[ "$(python3 "$YQ" -o=json '.optional_items' "$WORK/case.yaml" | jq -c '.')" == '[null,"named"]' ]] || {
+  echo "FAIL: comment-only list item did not parse as empty item" >&2
   exit 1
 }
 

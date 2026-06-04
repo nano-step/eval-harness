@@ -217,6 +217,7 @@ def parse_dict(lines, i, indent):
         if key is None:
             break
         key = parse_scalar(key)
+        raw_value = strip_inline_comment(raw_value)
         if raw_value in ("|", ">"):
             out[key], i = parse_block_scalar(lines, i + 1, ind, raw_value)
             continue
@@ -248,7 +249,7 @@ def parse_list(lines, i, indent):
         text = lines[i][ind:]
         if not text.startswith("- "):
             break
-        item_text = text[2:].strip()
+        item_text = strip_inline_comment(text[2:].strip())
         if item_text == "":
             j = next_content(lines, i + 1)
             if j >= len(lines) or indent_of(lines[j]) <= ind:
@@ -266,6 +267,7 @@ def parse_list(lines, i, indent):
             continue
 
         key = parse_scalar(key)
+        raw_value = strip_inline_comment(raw_value)
         i += 1
         j = next_content(lines, i)
         if raw_value == "":

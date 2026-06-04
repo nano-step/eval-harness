@@ -56,6 +56,15 @@ printf 'data\n' | PATH="$WORK" portable_sha256_stdin > "$WORK/stdin-hash.txt"
   exit 1
 }
 
+printf 'b\0a\0' | portable_sort_nul | python3 -c '
+import sys
+
+data = sys.stdin.buffer.read()
+if data != b"a\0b\0":
+    print(f"FAIL: portable_sort_nul returned {data!r}", file=sys.stderr)
+    sys.exit(1)
+'
+
 [[ "$(PATH="$WORK" run_with_timeout 5 okcmd)" == "ok" ]] || {
   echo "FAIL: gtimeout fallback not used" >&2
   exit 1
@@ -122,6 +131,11 @@ fi
 
 if grep -Eq '(^|[[:space:]])timeout[[:space:]]+60' "$REPO_ROOT/scripts/eval/hooks/pre-push"; then
   echo "FAIL: pre-push hook must use run_with_timeout" >&2
+  exit 1
+fi
+
+if grep -Eq 'sort[[:space:]]+-z' "$REPO_ROOT/scripts/eval/lib/manifest.sh"; then
+  echo "FAIL: manifest.sh must not require GNU sort -z" >&2
   exit 1
 fi
 
