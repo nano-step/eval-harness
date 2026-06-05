@@ -16,6 +16,7 @@
 | [taishi-i/awesome-ChatGPT-repositories](https://github.com/taishi-i/awesome-ChatGPT-repositories) | "Testing & evaluation" | `- [name](url) - description.` |
 | [steven2358/awesome-generative-ai](https://github.com/steven2358/awesome-generative-ai) | "Developer tools" → "Evaluation" | `- [name](url) - description.` |
 | [visenger/awesome-mlops](https://github.com/visenger/awesome-mlops) | "Model Testing" or "Observability" | `- [Name](url): Description.` |
+| [awesome-opencode/awesome-opencode](https://github.com/awesome-opencode/awesome-opencode) | `data/projects/<name>.yaml` (NOT README.md — list is YAML-driven, README auto-generates) | `name:`, `repo:`, `tagline:`, `description:` |
 
 **Always match the list's existing entry style exactly.** Capitalization, sentence terminator, link format — copy a neighbor entry's shape.
 
