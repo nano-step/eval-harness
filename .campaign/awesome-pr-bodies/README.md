@@ -15,6 +15,7 @@
 | 3 | [steven2358/awesome-generative-ai](https://github.com/steven2358/awesome-generative-ai) | OPEN #830 (MERGEABLE, just rebased) | "Developer tools" → "Evaluation" | `- [name](url) - description.` |
 | 4 | [awesome-opencode/awesome-opencode](https://github.com/awesome-opencode/awesome-opencode) | OPEN #405 (MERGEABLE) | `data/projects/<name>.yaml` (NOT README.md — list is YAML-driven) | `name:`, `repo:`, `tagline:`, `description:` |
 | 5 | [kyrolabs/awesome-agents](https://github.com/kyrolabs/awesome-agents) | OPEN #531 (MERGEABLE, CLEAN) | "Testing and Evaluation" | `- [Name](url): description. ![GitHub Repo stars](badge)` |
+| 6 | [UKGovernmentBEIS/inspect_ai](https://github.com/UKGovernmentBEIS/inspect_ai) **(real contribution, not listing)** | OPEN #4151 (MERGEABLE, 297 lines new code) | `examples/behavior_regression.py` | New example file demonstrating `ci()` and `mwu_pvalue()` metrics, cross-references eval-harness |
 
 **Always match the list's existing entry style exactly.** Capitalization, sentence terminator, link format — copy a neighbor entry's shape.
 
