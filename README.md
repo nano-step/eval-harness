@@ -242,14 +242,14 @@ EVAL_SKIP_AUTH_CHECK=1 eval-harness run --skill=<your-skill> --dry-run
 # Layer 1 — single check kind in isolation
 bash scripts/eval/lib/score.sh check <one-check.yaml> <workdir> <transcript>
 
-# Full test suite — 20 suites covering every primitive
+# Full test suite — 21 suites covering every primitive
 for t in scripts/eval/tests/*.sh; do bash "$t"; done
 # → all should print PASS
 ```
 
 If you need to know whether a specific factor is being checked, point at the case YAML — `.checks[]` is the complete list of factors that case enforces. There is no hidden scoring.
 
-### Verified test suites (20/20 green on `main`)
+### Verified test suites (21/21 green on `main`)
 
 | Suite | Covers |
 |---|---|
@@ -269,6 +269,7 @@ If you need to know whether a specific factor is being checked, point at the cas
 | `fix_proposal_render.sh`      | `fix_proposal` renders in `diff.md` (closes BLK-5) |
 | `bypass.sh`                   | `EVAL_BYPASS=1` exits 0 + writes bypass event (closes BLK-1) |
 | `shell_safety.sh`             | `score_shell` filter accepts jq/pipes/wc; rejects rm/curl/`$()`/backtick/`>`; honors `unsafe_shell:` opt-in (closes BLK-2) |
+| `shell_no_expectation.sh`     | `score_shell` treats missing `expect_*` fields as harness errors, not ordinary FAILs |
 | `fixture_path_traversal.sh`   | Fixture copy rejects absolute paths + `..` segments (closes BLK-3) |
 | `attribution_portable.sh`     | Attribution works under GNU + BSD grep (closes BLK-4) |
 | `transcript_empty_guard.sh`   | Missing/empty transcript → harness error not vacuous PASS (closes BLK-7) |

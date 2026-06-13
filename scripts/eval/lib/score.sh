@@ -68,6 +68,21 @@ score_shell() {
   local expect_exact; expect_exact="$(yq -r '.expect_exact // empty' "$check_file")"
   local unsafe_opt_in; unsafe_opt_in="$(yq -r '.unsafe_shell // false' "$check_file" 2>/dev/null || echo false)"
 
+  if ! grep -qE '^[[:space:]]*expect_(regex|min|exact)[[:space:]]*:' "$check_file"; then
+    jq -n \
+      --arg cmd "$cmd" \
+      '{
+        kind: "shell",
+        passed: false,
+        failed_check_id: ("shell:" + $cmd),
+        expected: "at least one expect_* field (expect_regex / expect_min / expect_exact)",
+        actual: "none set - check YAML for typo like expected_*",
+        diff_hint: "this check is misconfigured; treating as harness error",
+        error: true
+      }'
+    return 0
+  fi
+
   if [[ "$unsafe_opt_in" != "true" && "${EVAL_ALLOW_UNSAFE_SHELL:-0}" != "1" ]] && score_shell_is_unsafe "$cmd"; then
     jq -n \
       --arg cmd "$cmd" \
