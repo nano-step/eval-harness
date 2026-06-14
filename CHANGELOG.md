@@ -4,6 +4,12 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `preflight_check` now reports missing `python3` or PyYAML when the `yq` binary is absent and the yq-shim fallback would otherwise fail later without a useful hint.
+
 ## [0.4.2] — 2026-05-30
 
 ### Fixed (8 BLOCKERs surfaced by 2026-05-30 audits)

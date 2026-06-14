@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # lib/preflight.sh — fail fast before spawning opencode sandboxes if env is broken.
 #
-# Two checks (both required to pass):
+# Three checks (all required to pass):
 #   1. `opencode` binary is on PATH
-#   2. At least one supported provider credential is set, OR an explicit
+#   2. `yq` is available, or the Python yq-shim fallback can run
+#   3. At least one supported provider credential is set, OR an explicit
 #      EVAL_SKIP_AUTH_CHECK=1 escape hatch (for local mock/offline development)
 #
 # Returns 0 if all checks pass, non-zero with a human-readable message on stderr otherwise.
@@ -16,6 +17,16 @@ preflight_check() {
   if ! command -v opencode >/dev/null 2>&1; then
     echo "[eval-harness] preflight FAIL: 'opencode' not on PATH" >&2
     fail=1
+  fi
+
+  if ! type -P yq >/dev/null 2>&1; then
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "[eval-harness] preflight FAIL: neither 'yq' binary nor 'python3' (for yq-shim fallback) on PATH" >&2
+      fail=1
+    elif ! python3 -c 'import yaml' 2>/dev/null; then
+      echo "[eval-harness] preflight FAIL: 'yq' not on PATH and python3 lacks pyyaml. Run: pip install pyyaml" >&2
+      fail=1
+    fi
   fi
 
   if [[ "${EVAL_SKIP_AUTH_CHECK:-0}" == "1" ]]; then
