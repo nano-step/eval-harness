@@ -314,6 +314,12 @@ for case_file in "${CASE_FILES[@]}"; do
 
   fixture_error=0
   while IFS=$'\t' read -r dest src; do
+    # Strip trailing CR: on Windows, jq emits CRLF line endings, which
+    # would otherwise end up inside the `src` variable and break
+    # subsequent [[ -f ]] checks (Windows MSYS treats \r as a literal
+    # filename character, not a control byte).
+    dest="${dest%$'\r'}"
+    src="${src%$'\r'}"
     [[ -z "$dest" ]] && continue
 
     if [[ "$dest" = /* ]] || [[ "$dest" == *..* ]]; then
@@ -328,8 +334,12 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
 
     full_dest="$workdir/$dest"
-    canonical_dest="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$full_dest")"
-    canonical_workdir="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$workdir")"
+    # Normalize via python (handles ./, ../, redundant slashes) but then
+    # convert any backslashes to forward slashes so bash's pattern
+    # matching works the same on Windows and POSIX. On POSIX, paths
+    # already use forward slashes and the substitution is a no-op.
+    canonical_dest="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]).replace(os.sep, '/'))" "$full_dest")"
+    canonical_workdir="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]).replace(os.sep, '/'))" "$workdir")"
     if [[ "$canonical_dest" != "$canonical_workdir"/* && "$canonical_dest" != "$canonical_workdir" ]]; then
       echo "[eval-harness] case $cid: rejecting fixture dest='$dest' — resolves outside workdir" >&2
       fixture_error=1
