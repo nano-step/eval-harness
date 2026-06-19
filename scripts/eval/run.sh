@@ -423,7 +423,8 @@ for case_file in "${CASE_FILES[@]}"; do
     langgraph-node)
       input_file="$(yq -r '.runner_config.input // "input.json"' "$case_file" 2>/dev/null || echo "input.json")"
       output_file="$(yq -r '.runner_config.output // "output.json"' "$case_file" 2>/dev/null || echo "output.json")"
-      exit_code="$(spawn_runner langgraph-node "$workdir" "$workdir/$input_file" "$workdir/$output_file" "$transcript")"
+      runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
+      exit_code="$(spawn_runner langgraph-node "$workdir" "$workdir/$input_file" "$workdir/$output_file" "$transcript" "$runner_config_json")"
       ;;
   esac
 
@@ -495,7 +496,8 @@ for case_file in "${CASE_FILES[@]}"; do
         langgraph-node)
           input_file="$(yq -r '.runner_config.input // "input.json"' "$case_file" 2>/dev/null || echo "input.json")"
           output_file="$(yq -r '.runner_config.output // "output.json"' "$case_file" 2>/dev/null || echo "output.json")"
-          spawn_runner langgraph-node "$sample_workdir" "$sample_workdir/$input_file" "$sample_workdir/$output_file" "$sample_transcript" >/dev/null
+          runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
+          spawn_runner langgraph-node "$sample_workdir" "$sample_workdir/$input_file" "$sample_workdir/$output_file" "$sample_transcript" "$runner_config_json" >/dev/null
           ;;
       esac
       run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"

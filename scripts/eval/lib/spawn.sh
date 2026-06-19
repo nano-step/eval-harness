@@ -90,6 +90,9 @@ spawn_opencode() {
 # arg shape (see docs/runners.md). The caller (run.sh) is responsible
 # for translating the case's runner_config into the runner's expected
 # args.
+#
+# Echoes the spawn's exit code on stdout (matches spawn_opencode's
+# contract: run.sh captures it via `$(spawn_runner ...)`).
 spawn_runner() {
   local runner="${1:-opencode}"
   shift
@@ -97,7 +100,16 @@ spawn_runner() {
     spawn_opencode "$@"
     return $?
   fi
-  dispatch_runner spawn "$runner" "$@"
+  # dispatch_runner returns the spawn's exit code. Echo it on stdout so
+  # run.sh can capture via `$(spawn_runner ...)` (matches spawn_opencode's
+  # contract). We deliberately do NOT `return` the non-zero code here —
+  # the caller is using `$(...)` under `set -e`, and propagating a
+  # non-zero return would kill the harness before it can write a
+  # checks.json. The exit code is the caller's responsibility to inspect.
+  local rc=0
+  dispatch_runner spawn "$runner" "$@" || rc=$?
+  echo "$rc"
+  return 0
 }
 
 # Usage: token_total <transcript_jsonl>
