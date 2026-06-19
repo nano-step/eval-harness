@@ -1,0 +1,31 @@
+schema_version: 2
+id: output-contains
+mode: deterministic
+skill_under_test: langgraph-runner-example
+runner: langgraph-node
+skills_loaded: [langgraph-runner-example]
+description: "Transcript contains the marker the graph prints on success"
+tags: [runner, langgraph, transcript]
+
+setup:
+  fixtures:
+    "graph.py": fixtures/graph.py
+    "input.json": fixtures/input.json
+    "requirements.txt": fixtures/requirements.txt
+
+runner_config:
+  entry_point: "graph:run"
+  module: "graph.py"
+  input: "input.json"
+  output: "output.json"
+
+prompt: |
+  Stub prompt: see shell-basic.yaml.
+
+budget:
+  max_tokens: 1000
+  max_seconds: 60
+
+checks:
+  - kind: output_contains
+    value: "graph: wrote output.json"
