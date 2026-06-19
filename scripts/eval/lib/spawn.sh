@@ -14,6 +14,10 @@ if ! declare -F resolve_skills_root >/dev/null; then
   source "$SCRIPT_DIR/skills_root.sh"
 fi
 
+if ! declare -F dispatch_runner >/dev/null; then
+  source "$SCRIPT_DIR/runner.sh"
+fi
+
 # Usage: spawn_opencode <prompt> <workdir> <sandbox_dir> <transcript_out> [skills_to_load...]
 # - prompt: the user message string
 # - workdir: cwd for the opencode run (case fixtures already materialized here)
@@ -78,6 +82,24 @@ spawn_opencode() {
   echo "$exit_code"
 }
 
+# Usage: spawn_runner <runner> <args...>
+# Thin dispatcher around the per-runner contract. For "opencode" (or
+# empty), delegates to spawn_opencode with the opencode arg shape. For
+# all other runners, dispatches to <runner>.sh spawn with whatever
+# args the caller passes — each runner's spawn subcommand has its own
+# arg shape (see docs/runners.md). The caller (run.sh) is responsible
+# for translating the case's runner_config into the runner's expected
+# args.
+spawn_runner() {
+  local runner="${1:-opencode}"
+  shift
+  if [[ -z "$runner" || "$runner" == "opencode" ]]; then
+    spawn_opencode "$@"
+    return $?
+  fi
+  dispatch_runner spawn "$runner" "$@"
+}
+
 # Usage: token_total <transcript_jsonl>
 # Sums prompt_tokens + completion_tokens from opencode --format json events.
 # Per Settled #17: tokens-based capture, not opencode's broken dollar telemetry.
@@ -91,12 +113,13 @@ token_total() {
   ' "$transcript" 2>/dev/null || echo 0
 }
 
-export -f spawn_opencode token_total
+export -f spawn_opencode spawn_runner token_total
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
     run)    shift; spawn_opencode "$@" ;;
+    spawn)  shift; spawn_runner "$@" ;;
     tokens) shift; token_total "$@" ;;
-    *) echo "usage: spawn.sh {run <prompt> <workdir> <sandbox> <transcript_out> [skills...] | tokens <transcript>}" >&2; exit 2 ;;
+    *) echo "usage: spawn.sh {run <prompt> <workdir> <sandbox> <transcript_out> [skills...] | spawn <runner> <args...> | tokens <transcript>}" >&2; exit 2 ;;
   esac
 fi

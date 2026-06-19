@@ -21,7 +21,7 @@ attribute() {
   if echo "$changed" | grep -qE "^fixture_sha$"; then
     classes+=("FIXTURE_STALE")
   fi
-  if echo "$changed" | grep -qE "^(model_id|opencode_version)$"; then
+  if echo "$changed" | grep -qE "^(model_id|opencode_version|langgraph_version|graph_fingerprint)$"; then
     classes+=("MODEL_CHANGED")
   fi
 

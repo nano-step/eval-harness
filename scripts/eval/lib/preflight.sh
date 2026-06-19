@@ -10,6 +10,20 @@
 
 set -euo pipefail
 
+# Usage: preflight_check_langgraph
+# Runner-aware companion to preflight_check. The langgraph-node runner
+# does not invoke opencode, so it does not need a provider credential —
+# only python3 on PATH. EVAL_SKIP_AUTH_CHECK is honored implicitly: it
+# has no effect here (there is no LLM call to skip) but it is also
+# not required.
+preflight_check_langgraph() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[eval-harness] preflight FAIL: runner=langgraph-node requires python3 on PATH" >&2
+    return 1
+  fi
+  return 0
+}
+
 preflight_check() {
   local fail=0
 
@@ -56,7 +70,7 @@ preflight_check() {
   return "$fail"
 }
 
-export -f preflight_check
+export -f preflight_check preflight_check_langgraph
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   preflight_check
