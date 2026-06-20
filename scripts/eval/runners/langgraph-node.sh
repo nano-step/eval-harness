@@ -107,6 +107,10 @@ _parse_entry_point() {
     return 1
   fi
   _EP_MODULE="${ep%%:*}"
+  # Strip a trailing ".py" so authors can write either "graph:run" or
+  # "graph.py:run" per the documented format in docs/runners.md. Python's
+  # `python3 -m` requires a module name, not a filename.
+  _EP_MODULE="${_EP_MODULE%.py}"
   _EP_SYMBOL="${ep#*:}"
   [[ -n "$_EP_MODULE" && -n "$_EP_SYMBOL" ]]
 }
@@ -234,6 +238,15 @@ langgraph_node_spawn() {
   local transcript="${4:-}"
   local runner_config="${5:-${EVAL_RUNNER_CONFIG_JSON:-}}"
 
+  # Absolutize paths before any cd. Relative paths for input/output/
+  # transcript would otherwise resolve against the post-cd $PWD, which
+  # can duplicate path components when the caller passed a path that
+  # already includes the workdir.
+  [[ -n "$workdir" && "$workdir" != /* ]] && workdir="$PWD/$workdir"
+  [[ -n "$input" && "$input" != /* ]] && input="$PWD/$input"
+  [[ -n "$output" && "$output" != /* ]] && output="$PWD/$output"
+  [[ -n "$transcript" && "$transcript" != /* ]] && transcript="$PWD/$transcript"
+
   if [[ -n "$transcript" ]]; then
     : > "$transcript"
   fi
@@ -318,13 +331,18 @@ langgraph_node_spawn() {
 
 # --- fingerprint -----------------------------------------------------------
 
-# Usage: langgraph_node_fingerprint <module_path>
+# Usage: langgraph_node_fingerprint <workdir> <config_json>
 # Stable hash of the graph source. Combines:
-#   - the entry-point module file (always)
+#   - the entry-point module file (always; default name "graph.py",
+#     overridable via config_json.module)
 #   - <workdir>/tools/*.py            (optional, for tool modules)
 #   - <workdir>/prompt_template_*.txt (optional)
 #   - bodies of @tool-decorated top-level functions (adjacency check:
 #     a `def` only counts if the immediately preceding line is `@tool`).
+#
+# Signature follows the documented runner contract in docs/runners.md.
+# Earlier versions accepted a single <module_path> argument; that violated
+# the contract and forced run.sh to do path resolution the runner owns.
 #
 # Known limitations (documented in docs/runners.md):
 #   - Multi-line decorators (e.g. `@tool(\n  ...\n)`) won't be detected.
@@ -333,14 +351,23 @@ langgraph_node_spawn() {
 # valid (the alternative — failing the whole run for a fingerprint glitch
 # — is worse).
 langgraph_node_fingerprint() {
-  local module_path="${1:-}"
-  if [[ -z "$module_path" ]] || [[ ! -f "$module_path" ]]; then
-    printf '%s\n' "no-module"
+  local workdir="${1:-}"
+  local config_json="${2:-}"
+  if [[ -z "$workdir" ]] || [[ ! -d "$workdir" ]]; then
+    printf '%s\n' "no-workdir"
     return 0
   fi
 
-  local workdir
-  workdir="$(dirname "$module_path")"
+  local module_file="graph.py"
+  if [[ -n "$config_json" ]] && command -v jq >/dev/null 2>&1; then
+    module_file="$(printf '%s' "$config_json" | jq -r '.module // "graph.py"' 2>/dev/null || echo "graph.py")"
+  fi
+
+  local module_path="$workdir/$module_file"
+  if [[ ! -f "$module_path" ]]; then
+    printf '%s\n' "no-module"
+    return 0
+  fi
 
   # Collect files to hash, one path per line. Each line is sha256summed
   # individually and the concatenated output is then re-hashed so the
@@ -348,9 +375,18 @@ langgraph_node_fingerprint() {
   local hash_input=""
   hash_input+="$(sha256sum "$module_path" 2>/dev/null)"$'\n'
 
+  # Build a list of files that actually exist. Iterating a literal glob
+  # with no matches would pass the glob string itself to grep, which
+  # prints to stderr (silenced) and returns no match — leaving the
+  # @tool-bodies hash empty even when a real mutation has happened.
+  local files_to_grep=("$module_path")
+
   # Optional tool modules and prompt templates
   for f in "$workdir"/tools/*.py; do
-    [[ -f "$f" ]] && hash_input+="$(sha256sum "$f" 2>/dev/null)"$'\n'
+    if [[ -f "$f" ]]; then
+      hash_input+="$(sha256sum "$f" 2>/dev/null)"$'\n'
+      files_to_grep+=("$f")
+    fi
   done
   for f in "$workdir"/prompt_template_*.txt; do
     [[ -f "$f" ]] && hash_input+="$(sha256sum "$f" 2>/dev/null)"$'\n'
@@ -362,7 +398,7 @@ langgraph_node_fingerprint() {
   # mutation to the function body flips the fingerprint even if the
   # decorator+signature stay the same.
   local tool_bodies
-  tool_bodies="$(grep -B1 -A2 -E '^@tool' "$module_path" "$workdir"/tools/*.py 2>/dev/null | sha256sum 2>/dev/null || true)"
+  tool_bodies="$(grep -B1 -A2 -E '^@tool' "${files_to_grep[@]}" 2>/dev/null | sha256sum 2>/dev/null || true)"
   hash_input+="${tool_bodies}"$'\n'
 
   printf '%s\n' "$hash_input" | sha256sum | cut -d' ' -f1
