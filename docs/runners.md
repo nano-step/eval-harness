@@ -1,138 +1,195 @@
 # Runners
 
-> **Status (v0.4.2):** one runner ships — `opencode-skill`. The runner abstraction described here is the seam everything else is built around. LangGraph and Claude-Agent-SDK runners are tracked roadmap items.
+> Pluggable adapters for behavior-regression testing agents built on any framework.
 
 ## What is a runner?
 
-A **runner** adapts eval-harness's core to a specific agent framework. The core handles:
+A **runner** is a pluggable adapter that lets the eval-harness regression-test
+agents built on any framework, not just opencode. The case YAML, the 6 check
+kinds, and the 4-class attribution stay unchanged — only the spawn layer varies.
 
-- baseline + diff
-- 4-class attribution
-- 6-field FAIL schema
-- 3-sample stability check
-- $-cost gating
-- pre-push / pre-publish hooks
-- transcript scoring (all 6 check kinds)
+The harness ships with two runners:
 
-A runner handles:
+- **`opencode`** — the implicit default; the original agent. No adapter file
+  exists for it; the dispatcher has a fast-path that calls the existing
+  `spawn_opencode`, `token_total`, and preflight probes directly.
+- **`langgraph-node`** — the first explicit adapter, added in v0.5.0. Runs
+  Python-based LangGraph graphs via `python3 -m <module> --input X --output Y`.
 
-- **how to spawn the agent under test** with a given prompt, fixture directory, and env
-- **how to capture the agent's transcript** (stdout, structured log, OTel trace — runner's choice)
-- **how to compute the `skill_sha` / `agent_sha`** that feeds attribution
+Future runners (Python generic, HTTP, MCP) are proposed but not yet shipped.
 
-That's it. Three responsibilities. Everything else is shared.
+## The contract
 
-## Runner contract
+Every runner implements four subcommands. The full authoritative definitions
+live in [`scripts/eval/lib/runner.sh`](../scripts/eval/lib/runner.sh); the
+table below is the contract surface.
 
-A runner is a script (or any executable) at `scripts/eval/runners/<name>.sh` that responds to four subcommands:
+| Subcommand    | Signature                                                  | Purpose                                                                                  | Exit codes            |
+| ------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
+| `prepare`     | `<name>_prepare <workdir> <config_json>`                   | Stage the workdir (e.g. materialize fixtures, build a venv) before `spawn`.              | 0 ok, non-zero error  |
+| `spawn`       | `<name>_spawn <workdir> <config_json> <transcript> [prompt]` | Run the agent; write a `transcript.jsonl` and any outputs.                             | 0 ok, non-zero error  |
+| `fingerprint` | `<name>_fingerprint <workdir> <config_json>`               | Compute a hash of the graph / agent definition for attribution (skips outputs).          | 0 ok; stdout = hash    |
+| `teardown`    | `<name>_teardown <workdir> <config_json>`                  | Clean up after `spawn` (e.g. drop the venv, remove temp files). Idempotent and best-effort. | 0 ok, non-zero warn |
 
-```bash
-runners/<name>.sh prepare    <case_yaml> <workdir>
-runners/<name>.sh spawn      <case_yaml> <workdir> <transcript_out>
-runners/<name>.sh fingerprint <case_yaml>             # → stdout: SHA of the agent under test
-runners/<name>.sh teardown   <workdir>                # optional, runs on exit
-```
+The dispatcher routes each subcommand to the runner's function via
+`dispatch_runner <name> <subcommand> <args...>`. `run.sh` calls the
+dispatcher for the runner selected by the active invocation (CLI flag or
+case YAML default). The case YAML's `runner:` field is a required-to-match
+guard: if it differs from the active runner, the case is skipped (one-line
+notice on stderr, exit 0 for the case).
 
-The core invokes them in order: `prepare` → `spawn` → (score) → `teardown`. The runner is allowed to fail any of them; the core treats non-zero exit as a harness error (not a case FAIL — see [`tests/transcript_empty_guard.sh`](../scripts/eval/tests/transcript_empty_guard.sh) for the distinction).
+## Authoring a new runner
 
-The transcript file written by `spawn` is the **single source of truth** for scoring. The 6 check kinds read it via the [`score.sh`](../scripts/eval/lib/score.sh) library, runner-agnostic.
+Step-by-step:
 
-## Why this abstraction matters
+1. **Create** `scripts/eval/runners/<name>.sh`. The filename MUST match the
+   `runner:` value the case YAMLs will use.
 
-Without runners, eval-harness is "opencode skill testing." With runners, it's "any LLM-agent regression testing where you can:
+2. **Implement the four subcommand functions** (`<name>_prepare`,
+   `<name>_spawn`, `<name>_fingerprint`, `<name>_teardown`) as bash
+   functions in the file. Follow the signatures above. Each function
+   MUST be `export -f`-ed so `dispatch_runner` can find it after the
+   adapter is sourced.
 
-1. Reproducibly invoke the agent with a prompt + fixture
-2. Capture its transcript
-3. Hash its agent definition"
+3. **Register the runner** at the bottom of the adapter file with
+   `register_runner <name> "$BASH_SOURCE"`. This adds `<name>` to
+   `runner_names` and exposes the four subcommands through
+   `dispatch_runner`.
 
-That bar is low. **Every framework I've checked clears it.**
+4. **Source the adapter** from `scripts/eval/run.sh` (or have it
+   auto-discovered under `scripts/eval/runners/`). The langgraph-node
+   adapter is sourced unconditionally; future adapters can do the same
+   or be added behind a feature flag.
 
-## Shipped runners
+5. **Write a test** at `scripts/eval/tests/runner_<name>.sh`. Use the
+   existing [`runner_langgraph.sh`](../scripts/eval/tests/runner_langgraph.sh)
+   as a template — it stages fixtures, stubs the underlying toolchain,
+   and verifies the four subcommand traces plus attribution behaviors.
 
-### `opencode-skill` (v0.1.0+, default)
+6. **Add an example** under `examples/<name>-runner/` with at least one
+   case YAML so the integration test has a real fixture to point at.
+   See [`examples/langgraph-runner/`](../examples/langgraph-runner/) for
+   the canonical layout: 3 cases covering the three check patterns
+   (file/shell, jq-path-contains, output-contains).
 
-- Reads skills from `OPENCODE_SKILLS_ROOT` (env > walk-up > user-global)
-- `spawn` invokes `opencode run` with `skills_loaded` pinned
-- `fingerprint` = transitive SHA over the skill bundle (so cross-skill effects show up in attribution)
-- Captures transcript via `opencode --json-log`
+## The `langgraph-node` runner
 
-Implementation lives in [`scripts/eval/lib/spawn.sh`](../scripts/eval/lib/spawn.sh) + [`scripts/eval/lib/manifest.sh`](../scripts/eval/lib/manifest.sh). It pre-dates the formal runner contract; it's being moved to `scripts/eval/runners/opencode-skill.sh` as part of v0.8.0.
+LangGraph-specific notes for the [`langgraph-node` adapter](../scripts/eval/runners/langgraph-node.sh):
 
-## Roadmap runners
+- **Invocation shape:** `python3 -m <module> --input <input.json> --output <output.json>`.
+  The harness's `runner_config.module` and `runner_config.input` /
+  `runner_config.output` map directly to these argv slots. The module
+  MUST expose a callable matching `runner_config.entry_point`
+  (`module.py:symbol`).
 
-### `langgraph-node` (v0.8.0 — [issue #to-be-filed])
+- **Transcript shape:** The spawn subcommand emits `transcript.jsonl`
+  in the same shape as `opencode run --format json` — one event per
+  line, with `event`, `type`, `content`, and optional `usage` and `ts`
+  keys. `lib/score.sh` consumes this shape unchanged; the
+  `output_contains` check kind does a substring match against the
+  concatenated `content` fields.
 
-Adapts a LangGraph node or full graph to eval-harness.
+- **Manifest fields:** For each run, `lib/manifest.sh` captures three
+  optional fields when `EVAL_RUNNER=langgraph-node`:
 
-- `prepare`: install the case's Python deps in an ephemeral venv
-- `spawn`: invoke `python -m <module>` with the case prompt routed to the graph's entry node, transcript captured via LangSmith local-export or `langgraph.utils.tracer`
-- `fingerprint`: SHA over the graph definition module + its prompt templates + any `@tool`-decorated functions
+  - `graph_fingerprint` — hash of the graph's source code, computed by
+    the `fingerprint` subcommand.
+  - `langgraph_version` — `python3 -c "import langgraph;
+    print(langgraph.__version__)"` with a `none` fallback if langgraph
+    is not installed.
+  - `python_version` — `python3 --version` first line, with a `none`
+    fallback.
 
-If you want to help build this runner: the issue (when filed) will be tagged `help wanted, runner`. Comment on [discussion #28](https://github.com/nano-step/eval-harness/discussions/28) in the meantime.
+- **Venv caching knobs:**
 
-### `claude-agent-sdk` (v0.9.0)
+  - `EVAL_VENV_DIR` — override the venv location (default: `<workdir>/.venv`).
+  - `EVAL_VENV_CACHE=0` — disable venv caching; always create a fresh venv.
+  - `EVAL_SKIP_VENV_PREPARE=1` — skip the `pip install` step entirely
+    (use when the venv is pre-populated by an out-of-band step).
 
-Adapts the Anthropic [Claude Agent SDK](https://docs.anthropic.com/) to eval-harness.
+- **Known fingerprint limitations:** The `langgraph_node_fingerprint`
+  heuristic relies on `@tool` decorator adjacency and a `tools/*.py`
+  glob. Multi-line decorators, class-based tools, and conditional tool
+  definitions (inside `if __name__ == '__main__':` blocks) are not
+  detected and may produce false negatives. Authors of non-trivial
+  graphs should verify the fingerprint manually with
+  `bash scripts/eval/runners/langgraph-node.sh fingerprint <workdir> <config>`.
 
-- `spawn`: invoke the SDK in headless mode with the case prompt
-- `fingerprint`: SHA over the agent's system prompt + tools + model_id
+## Case YAML extensions
 
-### `crewai` (v0.10.0 — maybe)
+Two new optional top-level fields:
 
-Only if there's user demand. Open an issue if you want it.
+- **`runner:`** — a string naming the active runner (e.g. `langgraph-node`).
+  Defaults to `opencode` if absent. Acts as a required-to-match guard: if
+  the case's `runner:` differs from `run.sh`'s `--runner=<name>` (or the
+  default), the case is skipped with a one-line notice.
 
-### `bare-anthropic` (v0.10.0)
+- **`runner_config:`** — a free-form object the active adapter reads. The
+  opencode runner ignores it. For `langgraph-node` the documented keys are:
+  - `entry_point` — `module.py:symbol` (the callable to invoke).
+  - `module` — module name (also the .py file in the workdir).
+  - `input` — input JSON path (relative to workdir).
+  - `output` — output JSON path (relative to workdir).
 
-For regression-testing _just an Anthropic API prompt_ with no agent framework. `spawn` is a direct API call. This is the smallest possible runner — useful as a reference implementation for new runners.
+  Authors may add runner-specific keys; the schema is intentionally open.
 
-## Build your own runner
+For the full case-YAML reference, see the [README's "Authoring a case"
+section](../README.md#authoring-a-case).
 
-The contract is small enough that a working runner is ~150 lines of bash or ~80 lines of Python. If you build one, please open a PR — we'll cohabitate it under `scripts/eval/runners/` with attribution.
+## Manifest & attribution
 
-Minimum viable example skeleton:
+`lib/manifest.sh` captures per-run environment state into
+`env-manifest.json`. The schema is `schema_version: 2`; new optional
+fields default to `"none"` when not applicable so existing readers
+see no change.
 
-```bash
-#!/usr/bin/env bash
-# scripts/eval/runners/my-runner.sh
-set -euo pipefail
+For LangGraph runs, three new optional fields appear:
 
-cmd="$1"; shift
+| Field               | Source                                       | Default if missing |
+| ------------------- | -------------------------------------------- | ------------------ |
+| `graph_fingerprint` | `runner.fingerprint` subcommand output       | `"none"`           |
+| `langgraph_version` | `python3 -c 'import langgraph; print(...)'`  | `"none"`           |
+| `python_version`    | `python3 --version`                          | `"none"`           |
 
-case "$cmd" in
-  prepare)
-    case_yaml="$1"; workdir="$2"
-    # set up fixture, deps, ephemeral env
-    ;;
-  spawn)
-    case_yaml="$1"; workdir="$2"; transcript_out="$3"
-    # invoke the agent, write its transcript to $transcript_out
-    ;;
-  fingerprint)
-    case_yaml="$1"
-    # echo the SHA of the agent under test, e.g. sha256sum of the prompt file
-    ;;
-  teardown)
-    workdir="$1"
-    # optional cleanup
-    ;;
-  *)
-    echo "unknown runner cmd: $cmd" >&2; exit 64 ;;
-esac
-```
+`lib/attribute.sh` maps `env_delta.keys_changed` to one of four
+classes. The regex extensions added for LangGraph are:
 
-Then in your case YAML:
+- **`SKILL_CHANGED`** — `(skill_bundle_sha|skill_sha|graph_fingerprint)`
+- **`MODEL_CHANGED`** — `(model_id|opencode_version|langgraph_version)`
+- **`FIXTURE_STALE`** — `fixture_sha` (unchanged)
+- **`UNKNOWN_DRIFT`** — fallback when no class matches (e.g. a
+  `python_version`-only change). `python_version` is intentionally
+  not classified to avoid false positives from routine Python
+  upgrades on CI.
 
-```yaml
-runner: my-runner
-prompt: |
-  ...
-checks:
-  - kind: output_contains
-    needle: "expected substring"
-```
+The full attribution decision tree is in
+[`scripts/eval/lib/attribute.sh`](../scripts/eval/lib/attribute.sh).
 
-## Why opencode-first?
+## Examples
 
-Honest answer: opencode is where the maintainer ([@hoainho](https://github.com/hoainho)) ships agents. Building eval-harness against the framework you actually use is the only way to make sure the abstractions don't lie. The runner contract was extracted **after** opencode-skill worked end-to-end — not before.
+- [`examples/langgraph-runner/`](../examples/langgraph-runner/) — the
+  canonical LangGraph example with three cases:
+  - [`shell-basic.yaml`](../examples/langgraph-runner/cases/shell-basic.yaml) —
+    basic file + shell checks; uses `expect_min: 1` with `grep -c`.
+  - [`jq-path-contains.yaml`](../examples/langgraph-runner/cases/jq-path-contains.yaml) —
+    checks the output JSON's `sources` array contains
+    `langgraph-docs`. Note the array-constructor path
+    (`[.sources[]] | unique`) for jq 1.8.1 compatibility.
+  - [`output-contains.yaml`](../examples/langgraph-runner/cases/output-contains.yaml) —
+    transcript substring check on the graph's print output.
 
-This is good engineering ([extract abstractions from working code](https://wiki.c2.com/?RuleOfThree)), not opencode favoritism. The runner contract is friendly to any framework. PRs welcome.
+## Status
+
+- **Shipped** (v0.5.0):
+  - `opencode` — implicit default; no adapter file.
+  - `langgraph-node` — first explicit adapter; LangGraph framework.
+
+- **Proposed** (not yet shipped):
+  - `python-generic` — Python agents not built on LangGraph.
+  - `http` — agents reached over HTTP (any framework with a JSON API).
+  - `mcp` — Model Context Protocol agents reached over stdio or HTTP.
+
+A new adapter is a self-contained `scripts/eval/runners/<name>.sh` plus
+a `scripts/eval/tests/runner_<name>.sh` plus an
+`examples/<name>-runner/` directory. No core harness changes required
+when the contract is honored.
