@@ -427,6 +427,148 @@ else
   ok=0
 fi
 
+# --- Test 7: regression tests for Gemini review fixes ----------------------
+echo
+echo "================================================================"
+echo "TEST 7: Regression tests for Gemini review fixes (U2/U3/U4)"
+echo "================================================================"
+
+# Helper: source the runner + attribute in a subshell so env vars don't
+# leak into the test runner's scope.
+test_helper() {
+  # Source the attribute library (it auto-exports `attribute`).
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/../lib/attribute.sh" 2>/dev/null
+  # Source the runner (it registers bash functions, does not execute).
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/../runners/langgraph-node.sh" 2>/dev/null
+}
+
+# --- 7a: attribute.sh classifies graph_fingerprint as SKILL_CHANGED (U2) -----
+if result="$(test_helper && attribute '{"keys_changed":["graph_fingerprint"],"details":{}}' | jq -r '.top' 2>/dev/null)"; then
+  if [[ "$result" == "SKILL_CHANGED" ]]; then
+    echo "  7a: PASS (attribute(graph_fingerprint).top = SKILL_CHANGED)"
+  else
+    echo "  7a: FAIL (attribute(graph_fingerprint).top = $result, expected SKILL_CHANGED)" >&2
+    ok=0
+  fi
+else
+  echo "  7a: FAIL (attribute call errored)" >&2
+  ok=0
+fi
+
+# Combined: graph_fingerprint + langgraph_version → SKILL_CHANGED wins
+if result="$(test_helper && attribute '{"keys_changed":["graph_fingerprint","langgraph_version"],"details":{}}' | jq -r '.top' 2>/dev/null)"; then
+  if [[ "$result" == "SKILL_CHANGED" ]]; then
+    echo "  7b: PASS (combined: SKILL_CHANGED wins over MODEL_CHANGED)"
+  else
+    echo "  7b: FAIL (combined top = $result, expected SKILL_CHANGED)" >&2
+    ok=0
+  fi
+else
+  echo "  7b: FAIL (attribute call errored)" >&2
+  ok=0
+fi
+
+# Regression: langgraph_version alone still classifies as MODEL_CHANGED
+if result="$(test_helper && attribute '{"keys_changed":["langgraph_version"],"details":{}}' | jq -r '.top' 2>/dev/null)"; then
+  if [[ "$result" == "MODEL_CHANGED" ]]; then
+    echo "  7c: PASS (langgraph_version alone still MODEL_CHANGED)"
+  else
+    echo "  7c: FAIL (langgraph_version alone = $result, expected MODEL_CHANGED)" >&2
+    ok=0
+  fi
+else
+  echo "  7c: FAIL (attribute call errored)" >&2
+  ok=0
+fi
+
+# --- 7d: _parse_entry_point strips .py (U3) ----------------------------------
+if test_helper; then
+  _EP_MODULE=""; _EP_SYMBOL=""
+  if _parse_entry_point "graph.py:run"; then
+    if [[ "$_EP_MODULE" == "graph" && "$_EP_SYMBOL" == "run" ]]; then
+      echo "  7d: PASS (.py stripped: graph.py:run → module=graph, symbol=run)"
+    else
+      echo "  7d: FAIL (module=$_EP_MODULE, symbol=$_EP_SYMBOL, expected graph/run)" >&2
+      ok=0
+    fi
+  else
+    echo "  7d: FAIL (_parse_entry_point returned non-zero for graph.py:run)" >&2
+    ok=0
+  fi
+else
+  echo "  7d: FAIL (sourcing helpers errored)" >&2
+  ok=0
+fi
+
+# --- 7e: _parse_entry_point no-op when no .py (regression) -------------------
+if test_helper; then
+  _EP_MODULE=""; _EP_SYMBOL=""
+  if _parse_entry_point "graph:run"; then
+    if [[ "$_EP_MODULE" == "graph" && "$_EP_SYMBOL" == "run" ]]; then
+      echo "  7e: PASS (no-op when no .py: graph:run → module=graph)"
+    else
+      echo "  7e: FAIL (module=$_EP_MODULE, symbol=$_EP_SYMBOL, expected graph/run)" >&2
+      ok=0
+    fi
+  else
+    echo "  7e: FAIL (_parse_entry_point returned non-zero for graph:run)" >&2
+    ok=0
+  fi
+else
+  echo "  7e: FAIL (sourcing helpers errored)" >&2
+  ok=0
+fi
+
+# --- 7f: langgraph_node_fingerprint accepts <workdir> <config_json> (U4) -----
+# Use a temp dir containing a graph.py.
+FPRINT_WD="$(mktemp -d -t eval-harness-fprint.XXXXXX)"
+cp "$REPO_ROOT/examples/langgraph-runner/graph.py" "$FPRINT_WD/graph.py"
+FP1="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{"module":"graph.py"}' 2>/dev/null)"
+FP2="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{}' 2>/dev/null)"
+FP3="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" "" 2>/dev/null)"
+FP_MISSING="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{"module":"no-such-file.py"}' 2>/dev/null)"
+FP_NO_WD="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "/nonexistent-eval-harness-path" '{"module":"graph.py"}' 2>/dev/null)"
+rm -rf "$FPRINT_WD"
+
+# FP1, FP2, FP3 must be 64-char hex hashes and all equal (same module).
+if [[ "$FP1" =~ ^[a-f0-9]{64}$ ]] && [[ "$FP1" == "$FP2" ]] && [[ "$FP1" == "$FP3" ]]; then
+  echo "  7f: PASS (fingerprint stable across config forms: ${FP1:0:12}...)"
+else
+  echo "  7f: FAIL (FP1=$FP1 FP2=$FP2 FP3=$FP3)" >&2
+  ok=0
+fi
+if [[ "$FP_MISSING" == "no-module" ]]; then
+  echo "  7g: PASS (missing module returns 'no-module')"
+else
+  echo "  7g: FAIL (missing module returned: $FP_MISSING, expected 'no-module')" >&2
+  ok=0
+fi
+if [[ "$FP_NO_WD" == "no-workdir" ]]; then
+  echo "  7h: PASS (missing workdir returns 'no-workdir')"
+else
+  echo "  7h: FAIL (missing workdir returned: $FP_NO_WD, expected 'no-workdir')" >&2
+  ok=0
+fi
+
+# --- 7i: fingerprint argv shape under new signature (U4 wiring through run.sh) -
+# The trace log captures the python3 stub's invocations, but the fingerprint
+# subcommand now lives in the runner shell script, not in python3. Verify the
+# new contract by directly invoking via the CLI guard and inspecting argv.
+FPRINT_WD="$(mktemp -d -t eval-harness-fprint2.XXXXXX)"
+cp "$REPO_ROOT/examples/langgraph-runner/graph.py" "$FPRINT_WD/graph.py"
+FP_CLI_OUT="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{"module":"graph.py"}' 2>&1)"
+rm -rf "$FPRINT_WD"
+if [[ "$FP_CLI_OUT" =~ ^[a-f0-9]{64}$ ]]; then
+  echo "  7i: PASS (CLI guard emits 64-char hash for <workdir> <config_json>)"
+else
+  echo "  7i: FAIL (CLI guard emitted: $FP_CLI_OUT)" >&2
+  ok=0
+fi
+
+[[ "$ok" == "1" ]] && echo "  TEST 7: PASS" || { echo "  TEST 7: FAIL (see above)" >&2; }
+
 # --- Final report ------------------------------------------------------------
 echo
 echo "================================================================"
