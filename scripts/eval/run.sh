@@ -422,17 +422,10 @@ for case_file in "${CASE_FILES[@]}"; do
   if [[ "$EFFECTIVE_RUNNER" == "langgraph-node" ]]; then
     runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
     EVAL_RUNNER_CONFIG_SHA="$(printf '%s' "$runner_config_json" | sha256sum | cut -d' ' -f1)"
-    module_file="$(yq -r '.runner_config.module // "graph.py"' "$case_file" 2>/dev/null || echo "graph.py")"
-    if [[ -f "$workdir/$module_file" ]]; then
-      module_path="$workdir/$module_file"
-    elif [[ -f "$FIXTURES_DIR/$module_file" ]]; then
-      module_path="$FIXTURES_DIR/$module_file"
-    else
-      module_path=""
-    fi
-    if [[ -n "$module_path" && -f "$module_path" ]]; then
-      EVAL_GRAPH_FINGERPRINT="$(dispatch_runner fingerprint langgraph-node "$module_path" 2>/dev/null || echo none)"
-    fi
+    # Delegate path resolution to the runner. The runner contract
+    # (docs/runners.md) is `<name>_fingerprint <workdir> <config_json>`;
+    # run.sh should not pre-resolve module_path here.
+    EVAL_GRAPH_FINGERPRINT="$(dispatch_runner fingerprint langgraph-node "$workdir" "$runner_config_json" 2>/dev/null || echo none)"
   fi
   export EVAL_RUNNER_CONFIG_SHA EVAL_GRAPH_FINGERPRINT
 
