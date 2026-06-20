@@ -181,8 +181,26 @@ esac
 # preflight for each. This handles mixed-runner case sets where the CLI
 # didn't pin --runner: e.g., one opencode case + one langgraph-node case
 # should preflight both, not fail on the first preflight_check.
+# NOTE: this must happen *before* CASE_FILES is defined below (lines
+# 218-222). Without this ordering, _NEEDED_RUNNERS is empty and preflight
+# for every runner (including the default opencode) is silently bypassed.
 declare -A _NEEDED_RUNNERS=()
-for _cf in "${CASE_FILES[@]}"; do
+if [[ -n "${CASE_ID:-}" ]]; then
+  _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  if [[ -f "$_PRE_CASES_DIR/$CASE_ID.yaml" ]]; then
+    _PRE_CASE_FILES=("$_PRE_CASES_DIR/$CASE_ID.yaml")
+  else
+    _PRE_CASE_FILES=()
+  fi
+else
+  _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  if [[ -d "$_PRE_CASES_DIR" ]]; then
+    mapfile -t _PRE_CASE_FILES < <(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
+  else
+    _PRE_CASE_FILES=()
+  fi
+fi
+for _cf in "${_PRE_CASE_FILES[@]:-}"; do
   [[ -f "$_cf" ]] || continue
   _cr="$(yq -r '.runner // "opencode"' "$_cf" 2>/dev/null || echo "opencode")"
   _NEEDED_RUNNERS["$_cr"]=1
@@ -197,7 +215,7 @@ for _r in "${!_NEEDED_RUNNERS[@]}"; do
       ;;
   esac
 done
-unset _NEEDED_RUNNERS _cr _cf _r
+unset _NEEDED_RUNNERS _cr _cf _r _PRE_CASES_DIR _PRE_CASE_FILES
 
 SKILLS_ROOT="$(resolve_skills_root)"
 SKILL_DIR="$SKILLS_ROOT/$SKILL"
