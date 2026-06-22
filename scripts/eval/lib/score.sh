@@ -68,7 +68,9 @@ score_shell() {
   local expect_exact; expect_exact="$(yq -r '.expect_exact // empty' "$check_file")"
   local unsafe_opt_in; unsafe_opt_in="$(yq -r '.unsafe_shell // false' "$check_file" 2>/dev/null || echo false)"
 
-  if ! grep -qE '^[[:space:]]*expect_(regex|min|exact)[[:space:]]*:' "$check_file"; then
+  local has_expect_field
+  has_expect_field="$(yq -o=json '.' "$check_file" | jq 'has("expect_regex") or has("expect_min") or has("expect_exact")')"
+  if [[ "$has_expect_field" != "true" ]]; then
     jq -n \
       --arg cmd "$cmd" \
       '{
