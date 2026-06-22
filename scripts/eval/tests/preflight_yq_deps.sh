@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 WORK="$(mktemp -d -t eval-harness-preflight-yq.XXXXXX)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "${WORK:-}"' EXIT
 
 make_stub() {
   local name="$1"
