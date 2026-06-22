@@ -29,5 +29,20 @@ hint="$(echo "$out" | jq -r '.diff_hint')"
 [[ "$actual" == *"none set"* ]] || { echo "FAIL: actual should mention no expectations, got: $actual" >&2; exit 1; }
 [[ "$hint" == *"misconfigured"* ]] || { echo "FAIL: hint should identify a misconfigured check, got: $hint" >&2; exit 1; }
 
+cat > "$WORK/expect-text-in-command.yaml" <<'YAML'
+kind: shell
+cmd: |
+  cat <<'EOF'
+  expect_regex:
+  EOF
+YAML
+
+out="$(score_shell "$WORK/expect-text-in-command.yaml" "$WORK")"
+passed="$(echo "$out" | jq -r '.passed')"
+err="$(echo "$out" | jq -r '.error // false')"
+
+[[ "$passed" == "false" ]] || { echo "FAIL: missing expectations hidden in cmd text should not pass" >&2; echo "$out" >&2; exit 1; }
+[[ "$err" == "true" ]] || { echo "FAIL: expect_regex text inside cmd should not count as an expect_* field" >&2; echo "$out" >&2; exit 1; }
+
 echo "PASS: shell checks with no expect_* fields surface as harness errors"
 exit 0
