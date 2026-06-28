@@ -116,10 +116,29 @@ runs:
           BASE_SHA="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
         fi
+
+        # Fix #2: Fallback for new branch pushes (event.before is all-zeros)
+        EMPTY_TREE="0000000000000000000000000000000000000000"
+        if [[ -z "$BASE_SHA" || "$BASE_SHA" == "$EMPTY_TREE" ]]; then
+          echo "::notice::New branch detected (BASE_SHA empty/all-zeros). Using merge-base fallback."
+          BASE_SHA=$(git merge-base "$HEAD_SHA" "origin/${{ github.event.repository.default_branch }}" 2>/dev/null || echo "")
+          if [[ -z "$BASE_SHA" ]]; then
+            echo "::notice::Could not determine merge-base. Treating all files as changed."
+            CHANGED_SKILLS=$(git ls-files \
+              | awk -F/ '/^\.opencode\/skills\/[^\/]+\// {print $3}' \
+              | sort -u \
+              | paste -sd "," -)
+            echo "changed_skills=$CHANGED_SKILLS" >> "$GITHUB_OUTPUT"
+            echo "Changed skills (fallback): $CHANGED_SKILLS"
+            exit 0
+          fi
+        fi
+
         echo "Diff range: $BASE_SHA .. $HEAD_SHA"
+
+        # Fix #1: grep can return exit 1 when no matches; use awk filter + || true
         CHANGED_SKILLS=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
-          | grep -E '^.opencode/skills/[^/]+/' \
-          | awk -F/ '{print $3}' \
+          | awk -F/ '/^\.opencode\/skills\/[^\/]+\// {print $3}' \
           | sort -u \
           | paste -sd "," -)
         echo "changed_skills=$CHANGED_SKILLS" >> "$GITHUB_OUTPUT"
@@ -132,8 +151,11 @@ runs:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         EVAL_BUDGET_USD: ${{ inputs.budget-usd }}
         EVAL_CI: "1"
+        # Fix #3: Explicit EVAL_STATE_DIR so runs/ are written to workspace
+        EVAL_STATE_DIR: ${{ github.workspace }}/.eval-harness-runs
       run: |
         set -euo pipefail
+        RUNS_DIR="${EVAL_STATE_DIR}/runs"
 
         if [[ "${{ inputs.all-changed }}" == "true" ]]; then
           SKILLS="${{ steps.detect.outputs.changed_skills }}"
@@ -170,7 +192,7 @@ runs:
         done
 
         # Aggregate verdict + attribution + cost from the latest run dir
-        LATEST_RUN_DIR=$(ls -1dt runs/* 2>/dev/null | head -1 || echo "")
+        LATEST_RUN_DIR=$(ls -1dt "$RUNS_DIR"/* 2>/dev/null | head -1 || echo "")
         if [[ -n "$LATEST_RUN_DIR" && -f "$LATEST_RUN_DIR/summary.json" ]]; then
           VERDICT=$(jq -r '.verdict // "UNKNOWN"' "$LATEST_RUN_DIR/summary.json")
           ATTRIBUTION=$(jq -r '.attribution // ""' "$LATEST_RUN_DIR/summary.json")
@@ -219,6 +241,6 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: eval-harness-run-${{ github.run_id }}
-        path: runs/
+        path: ${{ github.workspace }}/.eval-harness-runs/runs/
         if-no-files-found: ignore
         retention-days: 30
