@@ -1,9 +1,32 @@
 # @nano-step/eval-harness
 
+[![npm](https://img.shields.io/npm/v/@nano-step/eval-harness?color=blue&label=npm)](https://www.npmjs.com/package/@nano-step/eval-harness)
+[![license](https://img.shields.io/github/license/nano-step/eval-harness?color=brightgreen)](./LICENSE)
+[![tests](https://img.shields.io/badge/tests-20%2F20%20green-brightgreen)](#verified-test-suites-2020-green-on-main)
+[![stars](https://img.shields.io/github/stars/nano-step/eval-harness?style=social)](https://github.com/nano-step/eval-harness/stargazers)
+[![discussions](https://img.shields.io/github/discussions/nano-step/eval-harness?color=blueviolet)](https://github.com/nano-step/eval-harness/discussions)
+[![issues](https://img.shields.io/github/issues/nano-step/eval-harness?color=informational)](https://github.com/nano-step/eval-harness/issues)
+[![good first issues](https://img.shields.io/github/issues/nano-step/eval-harness/good%20first%20issue?color=success)](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+
+> **Behavior-regression testing for LLM agents.** 4-class attribution, 6-field FAIL schema, $-cost gating, flaky detection. Bash + jq. Works with [opencode](https://github.com/sst/opencode) today, runner-pluggable.
+
+<p align="center">
+  <img src="./docs/assets/demo.gif" alt="eval-harness detecting a regression on git push, attributing it to SKILL_CHANGED, and rendering the 6-field FAIL with a fix_proposal." width="900">
+</p>
+
+> _The GIF above is built from [`docs/assets/demo.tape`](./docs/assets/demo.tape) with [Charm vhs](https://github.com/charmbracelet/vhs). If it's missing, run `vhs docs/assets/demo.tape`._
+
+### Learn more
+
+- [**Concepts**](./docs/concepts.md) — the 4 ideas that distinguish eval-harness (6-field FAIL, 4-class attribution, 3-sample stability, $-cost gating).
+- [**Comparison**](./docs/comparison.md) — eval-harness vs promptfoo, DeepEval, Ragas, OpenAI Evals.
+- [**Why not promptfoo?**](./docs/why-not-promptfoo.md) — direct head-to-head, when to use both.
+- [**Runners**](./docs/runners.md) — runner abstraction + path to LangGraph / Claude Agent SDK / your own framework.
+
 **v0.4.2** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
 > v0.4.2 closes all 8 BLOCKERs surfaced by independent audits: `EVAL_BYPASS` works, `score_shell` is sandboxed, fixture path-traversal blocked, `attribute.sh` portable across grep flavors, `fix_proposal` renders in `diff.md`, `--mode=2tier` aggregates verdicts correctly, empty/timed-out transcripts surface as harness errors rather than vacuous PASS.
 
-> **Scope statement.** eval-harness measures **behavior regression** for opencode skills. It is NOT a skill reviewer, NOT a quality grader, NOT a general-purpose evaluator. v0.4.x covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool.
+> **Scope statement.** eval-harness measures **behavior regression** for LLM agents. Today it ships with one runner (opencode skills) and covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). It is NOT a skill design reviewer, NOT a quality grader, NOT a general-purpose evaluator. Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool. Other runners (LangGraph, Claude Agent SDK) are on the v0.8.0+ roadmap — see [`docs/runners.md`](./docs/runners.md).
 
 ## What it does
 

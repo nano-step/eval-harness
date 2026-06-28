@@ -1,0 +1,45 @@
+name: eval (example)
+
+on:
+  pull_request:
+    paths:
+      - ".opencode/skills/**"
+      - ".github/workflows/eval-example.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".opencode/skills/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval:
+    name: behavior-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run eval-harness on changed skills
+        id: eval
+        uses: ./.github/actions/eval-harness
+        with:
+          all-changed: true
+          mode: 2tier
+          budget-usd: "1.00"
+          fail-on-regression: false
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Surface verdict to log
+        run: |
+          echo "Verdict: ${{ steps.eval.outputs.verdict }}"
+          echo "Attribution: ${{ steps.eval.outputs.attribution }}"
+          echo "Cost (USD): ${{ steps.eval.outputs.total-cost-usd }}"

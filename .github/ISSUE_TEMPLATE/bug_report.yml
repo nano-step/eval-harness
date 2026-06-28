@@ -1,0 +1,72 @@
+name: Bug report
+description: Reproducible behavior that the harness gets wrong
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The fastest path to a fix is a **reproducer** + **expected vs actual** + **environment**. Drive-by reports without a reproducer get triaged last.
+
+  - type: input
+    id: version
+    attributes:
+      label: eval-harness version
+      description: Output of `eval-harness --version` (or `git rev-parse --short HEAD` if running from source)
+      placeholder: "0.4.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Reproducer
+      description: Minimal shell commands, case YAML, or env vars that trigger the bug. The more I can copy-paste, the faster I can fix.
+      render: bash
+      placeholder: |
+        # 1. cd to a fresh tmpdir
+        # 2. cat > case.yaml <<EOF ... EOF
+        # 3. eval-harness run --case ./case.yaml
+        # 4. observe the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What does happen — include error message, exit code, transcript snippet, `diff.md`, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        Run these and paste output:
+        ```bash
+        uname -a
+        bash --version | head -1
+        jq --version
+        python3 --version
+        which opencode && opencode --version 2>&1 | head -1
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: file-line
+    attributes:
+      label: File:line guess (optional)
+      description: If you have a guess where the bug lives, point at it. Bonus karma, faster fix.
+      placeholder: "I think it's in `scripts/eval/lib/score.sh:142` where `expect_min` is compared with `<` instead of `<=`"
