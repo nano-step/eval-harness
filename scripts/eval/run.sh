@@ -21,6 +21,7 @@ source "$LIB/skills_root.sh"
 source "$LIB/config.sh"
 source "$LIB/registry.sh"
 source "$LIB/lock.sh"
+source "$LIB/runner.sh"
 source "$LIB/preflight.sh"
 source "$LIB/manifest.sh"
 source "$LIB/spawn.sh"
@@ -32,7 +33,7 @@ source "$LIB/pricing.sh"
 VERSION="0.4.2"
 
 usage() {
-  cat <<EOF
+  cat <<'EOF'
 eval-harness v$VERSION — opencode skill regression detector
 
 Usage:
@@ -47,6 +48,8 @@ Options:
   --debug                 Verbose log + keep sandbox dirs
   --pin-env=baseline      Re-run with baseline's env-manifest pinned
   --stability-samples=N   On FAIL re-run case N-1 more times; record byte-identicity (default 1)
+  --runner=<name>         Runner adapter: opencode (default) | langgraph-node | <custom>
+                          A case YAML's `runner:` must match this if both are set.
   --dry-run               Print plan; don't spawn opencode
   -h, --help              Show this help
 
@@ -62,6 +65,7 @@ Environment:
   EVAL_BUDGET_USD          Daily hard cap (default: 2.00)
   EVAL_MAX_SECONDS         Per-case timeout (default: 180)
   EVAL_MODEL               Override model (default: anthropic/claude-haiku-3-5)
+  EVAL_RUNNER              Default runner adapter (overridden per-case by case YAML `runner:`)
   EVAL_BYPASS              Set to 1 to skip evals (logged to history.ndjson)
 
 Exit codes:
@@ -79,6 +83,7 @@ DRY_RUN=0
 PIN_ENV=""
 MODE="${EVAL_MODE:-smoke}"
 STABILITY_SAMPLES="${EVAL_STABILITY_SAMPLES:-1}"
+RUNNER_OPT="${EVAL_RUNNER:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -90,11 +95,19 @@ for arg in "$@"; do
     --dry-run)               DRY_RUN=1 ;;
     --pin-env=*)             PIN_ENV="${arg#*=}" ;;
     --stability-samples=*)   STABILITY_SAMPLES="${arg#*=}" ;;
+    --runner=*)              RUNNER_OPT="${arg#*=}" ;;
     -h|--help)               usage; exit 0 ;;
     run)                     ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+# Propagate --runner into the EVAL_RUNNER env var so the case loop can
+# read it for per-invocation resolution. Empty means "use case YAML or
+# fall back to opencode default".
+if [[ -n "$RUNNER_OPT" ]]; then
+  export EVAL_RUNNER="$RUNNER_OPT"
+fi
 
 case "$MODE" in
   smoke|full|2tier) ;;
@@ -164,9 +177,45 @@ case "$TRIGGER" in
     ;;
 esac
 
-if ! preflight_check; then
-  exit 13
+# Pre-scan case files to determine which runners are needed, then run
+# preflight for each. This handles mixed-runner case sets where the CLI
+# didn't pin --runner: e.g., one opencode case + one langgraph-node case
+# should preflight both, not fail on the first preflight_check.
+# NOTE: this must happen *before* CASE_FILES is defined below (lines
+# 218-222). Without this ordering, _NEEDED_RUNNERS is empty and preflight
+# for every runner (including the default opencode) is silently bypassed.
+declare -A _NEEDED_RUNNERS=()
+if [[ -n "${CASE_ID:-}" ]]; then
+  _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  if [[ -f "$_PRE_CASES_DIR/$CASE_ID.yaml" ]]; then
+    _PRE_CASE_FILES=("$_PRE_CASES_DIR/$CASE_ID.yaml")
+  else
+    _PRE_CASE_FILES=()
+  fi
+else
+  _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  if [[ -d "$_PRE_CASES_DIR" ]]; then
+    mapfile -t _PRE_CASE_FILES < <(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
+  else
+    _PRE_CASE_FILES=()
+  fi
 fi
+for _cf in "${_PRE_CASE_FILES[@]:-}"; do
+  [[ -f "$_cf" ]] || continue
+  _cr="$(yq -r '.runner // "opencode"' "$_cf" 2>/dev/null || echo "opencode")"
+  _NEEDED_RUNNERS["$_cr"]=1
+done
+for _r in "${!_NEEDED_RUNNERS[@]}"; do
+  case "$_r" in
+    opencode)       if ! preflight_check;          then exit 13; fi ;;
+    langgraph-node) if ! preflight_check_langgraph; then exit 13; fi ;;
+    *)
+      echo "[eval-harness] unknown runner '$_r' in case files" >&2
+      exit 13
+      ;;
+  esac
+done
+unset _NEEDED_RUNNERS _cr _cf _r _PRE_CASES_DIR _PRE_CASE_FILES
 
 SKILLS_ROOT="$(resolve_skills_root)"
 SKILL_DIR="$SKILLS_ROOT/$SKILL"
@@ -235,8 +284,43 @@ for case_file in "${CASE_FILES[@]}"; do
     unset EVAL_CASE_MODEL
   fi
 
+  # Per-invocation runner resolution (KTD1):
+  #   1. CLI --runner sets EVAL_RUNNER. If case has runner:, they must match (skip on mismatch).
+  #   2. Case runner: is the per-case default.
+  #   3. Neither set: default to "opencode" (KTD2).
+  case_runner="$(yq -r '.runner // ""' "$case_file" 2>/dev/null || echo "")"
+  if [[ -n "$case_runner" ]]; then
+    if [[ -n "${EVAL_RUNNER:-}" && "${EVAL_RUNNER}" != "$case_runner" ]]; then
+      echo "[eval-harness] case $cid: runner mismatch (CLI=$EVAL_RUNNER case=$case_runner) — skipping" >&2
+      continue
+    fi
+    EFFECTIVE_RUNNER="$case_runner"
+  elif [[ -n "${EVAL_RUNNER:-}" ]]; then
+    EFFECTIVE_RUNNER="$EVAL_RUNNER"
+  else
+    EFFECTIVE_RUNNER="opencode"
+  fi
+  export EVAL_RUNNER="$EFFECTIVE_RUNNER"
+
+  # Per-case preflight: opencode is already preflighted above (re-run is
+  # idempotent). For langgraph-node and future non-opencode runners, run
+  # the runner-specific preflight here.
+  case "$EFFECTIVE_RUNNER" in
+    opencode) ;;
+    langgraph-node)
+      if ! preflight_check_langgraph; then
+        echo "[eval-harness] case $cid: preflight failed for runner=$EFFECTIVE_RUNNER — skipping" >&2
+        continue
+      fi
+      ;;
+    *)
+      echo "[eval-harness] case $cid: unknown runner '$EFFECTIVE_RUNNER' — skipping" >&2
+      continue
+      ;;
+  esac
+
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[eval-harness] [dry-run] case $i/${#CASE_FILES[@]} $cid"
+    echo "[eval-harness] [dry-run] case $i/${#CASE_FILES[@]} $cid runner=$EFFECTIVE_RUNNER"
     continue
   fi
 
@@ -248,6 +332,12 @@ for case_file in "${CASE_FILES[@]}"; do
 
   fixture_error=0
   while IFS=$'\t' read -r dest src; do
+    # Strip trailing CR: on Windows, jq emits CRLF line endings, which
+    # would otherwise end up inside the `src` variable and break
+    # subsequent [[ -f ]] checks (Windows MSYS treats \r as a literal
+    # filename character, not a control byte).
+    dest="${dest%$'\r'}"
+    src="${src%$'\r'}"
     [[ -z "$dest" ]] && continue
 
     if [[ "$dest" = /* ]] || [[ "$dest" == *..* ]]; then
@@ -262,8 +352,12 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
 
     full_dest="$workdir/$dest"
-    canonical_dest="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$full_dest")"
-    canonical_workdir="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]))" "$workdir")"
+    # Normalize via python (handles ./, ../, redundant slashes) but then
+    # convert any backslashes to forward slashes so bash's pattern
+    # matching works the same on Windows and POSIX. On POSIX, paths
+    # already use forward slashes and the substitution is a no-op.
+    canonical_dest="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]).replace(os.sep, '/'))" "$full_dest")"
+    canonical_workdir="$(python3 -c "import os,sys; print(os.path.normpath(sys.argv[1]).replace(os.sep, '/'))" "$workdir")"
     if [[ "$canonical_dest" != "$canonical_workdir"/* && "$canonical_dest" != "$canonical_workdir" ]]; then
       echo "[eval-harness] case $cid: rejecting fixture dest='$dest' — resolves outside workdir" >&2
       fixture_error=1
@@ -321,15 +415,39 @@ for case_file in "${CASE_FILES[@]}"; do
     done
   fi
 
+  # Compute runner-aware manifest inputs (EVAL_RUNNER_CONFIG_SHA,
+  # EVAL_GRAPH_FINGERPRINT) so capture_manifest picks them up.
+  EVAL_RUNNER_CONFIG_SHA="none"
+  EVAL_GRAPH_FINGERPRINT="none"
+  if [[ "$EFFECTIVE_RUNNER" == "langgraph-node" ]]; then
+    runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
+    EVAL_RUNNER_CONFIG_SHA="$(printf '%s' "$runner_config_json" | sha256sum | cut -d' ' -f1)"
+    # Delegate path resolution to the runner. The runner contract
+    # (docs/runners.md) is `<name>_fingerprint <workdir> <config_json>`;
+    # run.sh should not pre-resolve module_path here.
+    EVAL_GRAPH_FINGERPRINT="$(dispatch_runner fingerprint langgraph-node "$workdir" "$runner_config_json" 2>/dev/null || echo none)"
+  fi
+  export EVAL_RUNNER_CONFIG_SHA EVAL_GRAPH_FINGERPRINT
+
   capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
 
-  if command -v opencode >/dev/null 2>&1; then
-    exit_code="$(spawn_opencode "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}")"
-  else
-    echo "[eval-harness] WARNING: opencode CLI not on PATH — emitting stub transcript for offline scoring" >&2
-    : > "$transcript"
-    exit_code=0
-  fi
+  case "$EFFECTIVE_RUNNER" in
+    opencode)
+      if command -v opencode >/dev/null 2>&1; then
+        exit_code="$(spawn_runner opencode "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}")"
+      else
+        echo "[eval-harness] WARNING: opencode CLI not on PATH — emitting stub transcript for offline scoring" >&2
+        : > "$transcript"
+        exit_code=0
+      fi
+      ;;
+    langgraph-node)
+      input_file="$(yq -r '.runner_config.input // "input.json"' "$case_file" 2>/dev/null || echo "input.json")"
+      output_file="$(yq -r '.runner_config.output // "output.json"' "$case_file" 2>/dev/null || echo "output.json")"
+      runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
+      exit_code="$(spawn_runner langgraph-node "$workdir" "$workdir/$input_file" "$workdir/$output_file" "$transcript" "$runner_config_json")"
+      ;;
+  esac
 
   if [[ "$exit_code" == "124" ]]; then
     echo "[eval-harness] case $cid: opencode timed out after ${EVAL_MAX_SECONDS:-180}s (exit 124)" >&2
@@ -388,11 +506,21 @@ for case_file in "${CASE_FILES[@]}"; do
       sample_sandbox="$sample_dir/sandbox"
       cp -R "$workdir" "$sample_workdir"
       sample_transcript="$sample_dir/transcript.jsonl"
-      if command -v opencode >/dev/null 2>&1; then
-        spawn_opencode "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}" >/dev/null
-      else
-        : > "$sample_transcript"
-      fi
+      case "$EFFECTIVE_RUNNER" in
+        opencode)
+          if command -v opencode >/dev/null 2>&1; then
+            spawn_runner opencode "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}" >/dev/null
+          else
+            : > "$sample_transcript"
+          fi
+          ;;
+        langgraph-node)
+          input_file="$(yq -r '.runner_config.input // "input.json"' "$case_file" 2>/dev/null || echo "input.json")"
+          output_file="$(yq -r '.runner_config.output // "output.json"' "$case_file" 2>/dev/null || echo "output.json")"
+          runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
+          spawn_runner langgraph-node "$sample_workdir" "$sample_workdir/$input_file" "$sample_workdir/$output_file" "$sample_transcript" "$runner_config_json" >/dev/null
+          ;;
+      esac
       run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
       hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
       s=$((s+1))

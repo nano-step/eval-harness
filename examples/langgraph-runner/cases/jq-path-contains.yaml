@@ -1,0 +1,38 @@
+schema_version: 2
+id: jq-path-contains
+mode: deterministic
+skill_under_test: langgraph-runner-example
+runner: langgraph-node
+skills_loaded: [langgraph-runner-example]
+description: "Graph output's `sources` array contains 'langgraph-docs'"
+tags: [runner, langgraph, jsonpath]
+
+setup:
+  fixtures:
+    "graph.py": fixtures/graph.py
+    "input.json": fixtures/input.json
+    "requirements.txt": fixtures/requirements.txt
+
+runner_config:
+  entry_point: "graph:run"
+  module: "graph.py"
+  input: "input.json"
+  output: "output.json"
+
+prompt: |
+  Stub prompt: see shell-basic.yaml.
+
+budget:
+  max_tokens: 1000
+  max_seconds: 60
+
+checks:
+  - kind: file_exists
+    path: output.json
+  # Path uses the array-constructor form `[.sources[]]` because the
+  # score script does jq set-difference on the result, which needs a
+  # single array (not a stream of elements).
+  - kind: jq_path_contains
+    file: output.json
+    path: "[.sources[]] | unique"
+    contains: ["langgraph-docs"]

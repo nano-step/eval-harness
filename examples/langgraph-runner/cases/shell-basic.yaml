@@ -1,0 +1,38 @@
+schema_version: 2
+id: shell-basic
+mode: deterministic
+skill_under_test: langgraph-runner-example
+runner: langgraph-node
+skills_loaded: [langgraph-runner-example]
+description: "langgraph-node runner writes a JSON file the harness can read back"
+tags: [runner, langgraph, structure]
+
+setup:
+  fixtures:
+    "graph.py": fixtures/graph.py
+    "input.json": fixtures/input.json
+    "requirements.txt": fixtures/requirements.txt
+
+runner_config:
+  entry_point: "graph:run"
+  module: "graph.py"
+  input: "input.json"
+  output: "output.json"
+
+prompt: |
+  Stub prompt: the langgraph-node runner does not consume this string.
+  The graph is invoked directly via runner_config and reads input.json.
+
+budget:
+  max_tokens: 1000
+  max_seconds: 60
+
+checks:
+  - kind: file_exists
+    path: output.json
+  - kind: shell
+    cmd: "grep -c -F 'answer' output.json"
+    expect_min: 1
+  - kind: shell
+    cmd: "grep -c -F 'sources' output.json"
+    expect_min: 1
