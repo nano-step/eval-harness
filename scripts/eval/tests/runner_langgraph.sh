@@ -263,8 +263,19 @@ BASELINE_FILE="$OPENCODE_SKILLS_ROOT/$SKILL_NAME/evals/baselines/$TEST3_CASE.bas
   || { echo "  TEST 3: FAIL (no baseline written)" >&2; ok=0; }
 
 cp "$SKILL_DIR/evals/fixtures/graph.py" "$WORK/graph.py.bak"
-sed -i 's|base = \["langgraph-docs", "eval-harness"\]|base = ["x", "y", "z"]|' \
-  "$SKILL_DIR/evals/fixtures/graph.py"
+python3 - "$SKILL_DIR/evals/fixtures/graph.py" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+old = 'base = ["langgraph-docs", "eval-harness"]'
+new = 'base = ["x", "y", "z"]'
+text = path.read_text()
+if old not in text:
+    print("FAIL: graph.py mutation target not found", file=sys.stderr)
+    sys.exit(1)
+path.write_text(text.replace(old, new, 1))
+PY
 
 set +e
 bash "$EVAL_BIN" --skill="$SKILL_NAME" --case="$TEST3_CASE" --trigger=manual \

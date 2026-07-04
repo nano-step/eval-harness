@@ -29,6 +29,7 @@ source "$LIB/score.sh"
 source "$LIB/diff.sh"
 source "$LIB/stability.sh"
 source "$LIB/pricing.sh"
+source "$LIB/portable.sh"
 
 VERSION="0.4.2"
 
@@ -184,28 +185,38 @@ esac
 # NOTE: this must happen *before* CASE_FILES is defined below (lines
 # 218-222). Without this ordering, _NEEDED_RUNNERS is empty and preflight
 # for every runner (including the default opencode) is silently bypassed.
-declare -A _NEEDED_RUNNERS=()
+_NEEDED_RUNNERS=""
+add_needed_runner() {
+  local candidate="$1"
+  case $'\n'"$_NEEDED_RUNNERS"$'\n' in
+    *$'\n'"$candidate"$'\n'*) return 0 ;;
+  esac
+  _NEEDED_RUNNERS="${_NEEDED_RUNNERS}${candidate}"$'\n'
+}
 if [[ -n "${CASE_ID:-}" ]]; then
   _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
   if [[ -f "$_PRE_CASES_DIR/$CASE_ID.yaml" ]]; then
-    _PRE_CASE_FILES=("$_PRE_CASES_DIR/$CASE_ID.yaml")
+    _PRE_CASE_FILES="$_PRE_CASES_DIR/$CASE_ID.yaml"
   else
-    _PRE_CASE_FILES=()
+    _PRE_CASE_FILES=""
   fi
 else
   _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  _PRE_CASE_FILES=""
   if [[ -d "$_PRE_CASES_DIR" ]]; then
-    mapfile -t _PRE_CASE_FILES < <(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
-  else
-    _PRE_CASE_FILES=()
+    _PRE_CASE_FILES="$(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)"
   fi
 fi
-for _cf in "${_PRE_CASE_FILES[@]:-}"; do
+while IFS= read -r _cf; do
+  [[ -n "$_cf" ]] || continue
   [[ -f "$_cf" ]] || continue
   _cr="$(yq -r '.runner // "opencode"' "$_cf" 2>/dev/null || echo "opencode")"
-  _NEEDED_RUNNERS["$_cr"]=1
-done
-for _r in "${!_NEEDED_RUNNERS[@]}"; do
+  add_needed_runner "$_cr"
+done <<EOF
+$_PRE_CASE_FILES
+EOF
+while IFS= read -r _r; do
+  [[ -n "$_r" ]] || continue
   case "$_r" in
     opencode)       if ! preflight_check;          then exit 13; fi ;;
     langgraph-node) if ! preflight_check_langgraph; then exit 13; fi ;;
@@ -214,7 +225,10 @@ for _r in "${!_NEEDED_RUNNERS[@]}"; do
       exit 13
       ;;
   esac
-done
+done <<EOF
+$_NEEDED_RUNNERS
+EOF
+unset -f add_needed_runner
 unset _NEEDED_RUNNERS _cr _cf _r _PRE_CASES_DIR _PRE_CASE_FILES
 
 SKILLS_ROOT="$(resolve_skills_root)"
@@ -236,7 +250,10 @@ mkdir -p "$RUN_DIR"
 if [[ -n "$CASE_ID" ]]; then
   CASE_FILES=("$CASES_DIR/$CASE_ID.yaml")
 else
-  mapfile -t CASE_FILES < <(find "$CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
+  CASE_FILES=()
+  while IFS= read -r case_file; do
+    CASE_FILES+=("$case_file")
+  done < <(find "$CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
 fi
 
 if [[ ${#CASE_FILES[@]} -eq 0 ]]; then
@@ -274,7 +291,10 @@ for case_file in "${CASE_FILES[@]}"; do
   cid="$(yq -r '.id' "$case_file")"
   prompt="$(yq -r '.prompt' "$case_file")"
   description="$(yq -r '.description // ""' "$case_file")"
-  mapfile -t skills_loaded < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
+  skills_loaded=()
+  while IFS= read -r skill_name; do
+    [[ -n "$skill_name" ]] && skills_loaded+=("$skill_name")
+  done < <(yq -r '.skills_loaded[]' "$case_file" 2>/dev/null || true)
   [[ ${#skills_loaded[@]} -eq 0 ]] && skills_loaded=("$SKILL")
 
   case_model="$(yq -r '.model // ""' "$case_file" 2>/dev/null || echo "")"
@@ -497,7 +517,7 @@ for case_file in "${CASE_FILES[@]}"; do
   stability_json='{"samples":1,"byte_identical":true,"hashes":[],"performed":false}'
   if [[ "$STABILITY_SAMPLES" -gt 1 && "$primary_passed" == "false" ]]; then
     echo "[eval-harness] case $cid FAILed — running $((STABILITY_SAMPLES - 1)) stability sample(s)" >&2
-    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+    hashes=("$(jq -S '.checks // []' "$per_case_dir/checks.json" 2>/dev/null | portable_sha256_stdin | cut -d' ' -f1)")
     s=2
     while [[ "$s" -le "$STABILITY_SAMPLES" ]]; do
       sample_dir="$per_case_dir/stability/sample-$s"
@@ -522,7 +542,7 @@ for case_file in "${CASE_FILES[@]}"; do
           ;;
       esac
       run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
-      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | sha256sum | cut -d' ' -f1)")
+      hashes+=("$(jq -S '.checks // []' "$sample_dir/checks.json" 2>/dev/null | portable_sha256_stdin | cut -d' ' -f1)")
       s=$((s+1))
     done
     first="${hashes[0]}"

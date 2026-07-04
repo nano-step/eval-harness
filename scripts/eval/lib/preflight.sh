@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+_PREFLIGHT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Usage: preflight_check_langgraph
 # Runner-aware companion to preflight_check. The langgraph-node runner
 # does not invoke opencode, so it does not need a provider credential —
@@ -37,8 +39,8 @@ preflight_check() {
     if ! command -v python3 >/dev/null 2>&1; then
       echo "[eval-harness] preflight FAIL: neither 'yq' binary nor 'python3' (for yq-shim fallback) on PATH" >&2
       fail=1
-    elif ! python3 -c 'import yaml' 2>/dev/null; then
-      echo "[eval-harness] preflight FAIL: 'yq' not on PATH and python3 lacks pyyaml. Run: pip install pyyaml" >&2
+    elif ! EVAL_YQ_FORCE_STDLIB=1 python3 "$_PREFLIGHT_DIR/_yq.py" --version >/dev/null 2>&1; then
+      echo "[eval-harness] preflight FAIL: 'yq' not on PATH and python3 yq-shim fallback failed" >&2
       fail=1
     fi
   fi
