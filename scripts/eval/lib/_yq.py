@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """yq-shim helper: a minimal yq-compatible subset for eval-harness.
 
+The stdlib parser exists for locked-down or air-gapped environments where the
+project's documented shell + jq + python3 stdlib toolchain is available but
+installing PyYAML or a yq binary is not. It is intentionally not a general YAML
+implementation. It supports the subset used by eval-harness config and case
+files: space-indented mappings and lists, null/bool/number/string scalars,
+inline arrays/maps, comments, and literal/folded block scalars. It does not
+support anchors, aliases, tags, multi-document streams, or arbitrary YAML 1.2
+features. When PyYAML is available and EVAL_YQ_FORCE_STDLIB is not set, PyYAML
+remains the default parser.
+
 Reads YAML from stdin or a file arg, applies a tiny expression language,
 prints scalars (with -r) or JSON / YAML output.
 """

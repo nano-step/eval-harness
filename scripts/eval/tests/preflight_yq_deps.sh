@@ -50,27 +50,28 @@ grep -q "neither 'yq' binary nor 'python3'" "$missing_python" || {
 make_stub python3 '#!/bin/sh
 exit 1'
 
-missing_pyyaml="$WORK/missing-pyyaml.log"
-if run_preflight "$missing_pyyaml"; then
-  echo "FAIL: missing PyYAML should fail preflight when yq is absent" >&2
-  cat "$missing_pyyaml" >&2
+broken_shim="$WORK/broken-shim.log"
+if run_preflight "$broken_shim"; then
+  echo "FAIL: broken python3 yq-shim fallback should fail preflight when yq is absent" >&2
+  cat "$broken_shim" >&2
   exit 1
 fi
-grep -q "python3 lacks pyyaml" "$missing_pyyaml" || {
-  echo "FAIL: missing-pyyaml diagnostic not found" >&2
-  cat "$missing_pyyaml" >&2
+grep -q "python3 yq-shim fallback failed" "$broken_shim" || {
+  echo "FAIL: broken-shim diagnostic not found" >&2
+  cat "$broken_shim" >&2
   exit 1
 }
 
 make_stub python3 '#!/bin/sh
-if [ "${1:-}" = "-c" ] && [ "${2:-}" = "import yaml" ]; then
+if [ "${2:-}" = "--version" ]; then
+  echo "python-yq-shim 0.1.0"
   exit 0
 fi
 exit 1'
 
 fallback_ok="$WORK/fallback-ok.log"
 if ! run_preflight "$fallback_ok"; then
-  echo "FAIL: python3 with yaml should satisfy yq fallback preflight" >&2
+  echo "FAIL: python3 stdlib yq-shim should satisfy yq fallback preflight" >&2
   cat "$fallback_ok" >&2
   exit 1
 fi
@@ -86,5 +87,5 @@ if ! run_preflight "$yq_ok"; then
   exit 1
 fi
 
-echo "PASS: preflight reports missing yq fallback deps and accepts yq or python3+pyyaml"
+echo "PASS: preflight reports missing yq fallback deps and accepts yq or python3 stdlib shim"
 exit 0

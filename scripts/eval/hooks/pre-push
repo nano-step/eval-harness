@@ -83,10 +83,10 @@ echo "$unique_skills" | sed 's/^/  - /' >&2
 EVAL_HARNESS_BIN="${EVAL_HARNESS_BIN:-eval-harness}"
 exit_code=0
 for skill in $unique_skills; do
-  if run_with_timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push; then
-    :
-  else
-    exit_code=$?
+  rc=0
+  run_with_timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    exit_code="$rc"
   fi
 done
 

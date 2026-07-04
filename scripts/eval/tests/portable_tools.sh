@@ -124,6 +124,27 @@ if ! grep -q -- '--skill=foo --trigger=pre-push' "$WORK/harness.log"; then
   exit 1
 fi
 
+cat > "$WORK/hook-bin/eval-harness" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$EVAL_HARNESS_STUB_LOG"
+exit 12
+STUB
+chmod +x "$WORK/hook-bin/eval-harness"
+
+set +e
+EVAL_HARNESS_STUB_LOG="$WORK/harness-fail.log" \
+  PATH="$WORK/hook-bin:$PATH" \
+  bash -c "cd '$HOOK_REPO' && '$REPO_ROOT/scripts/eval/hooks/pre-push' origin git@example.invalid" <<EOF
+refs/heads/main $head_sha refs/heads/main $base_sha
+EOF
+hook_rc=$?
+set -e
+if [[ "$hook_rc" != "12" ]]; then
+  echo "FAIL: pre-push returned $hook_rc, expected eval-harness exit code 12" >&2
+  cat "$WORK/harness-fail.log" >&2 || true
+  exit 1
+fi
+
 if grep -Eq 'grep -[^[:space:]]*P' "$REPO_ROOT/scripts/eval/hooks/pre-push"; then
   echo "FAIL: pre-push hook must not require grep -P" >&2
   exit 1
@@ -136,6 +157,16 @@ fi
 
 if grep -Eq 'sort[[:space:]]+-z' "$REPO_ROOT/scripts/eval/lib/manifest.sh"; then
   echo "FAIL: manifest.sh must not require GNU sort -z" >&2
+  exit 1
+fi
+
+if grep -Eq '(^|[[:space:]])declare[[:space:]]+-A($|[[:space:]])' "$REPO_ROOT/scripts/eval/run.sh"; then
+  echo "FAIL: run.sh must not require Bash 4 associative arrays" >&2
+  exit 1
+fi
+
+if grep -Eq '(^|[[:space:]])mapfile($|[[:space:]])' "$REPO_ROOT/scripts/eval/run.sh"; then
+  echo "FAIL: run.sh must not require Bash 4 mapfile" >&2
   exit 1
 fi
 

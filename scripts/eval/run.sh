@@ -185,28 +185,38 @@ esac
 # NOTE: this must happen *before* CASE_FILES is defined below (lines
 # 218-222). Without this ordering, _NEEDED_RUNNERS is empty and preflight
 # for every runner (including the default opencode) is silently bypassed.
-declare -A _NEEDED_RUNNERS=()
+_NEEDED_RUNNERS=""
+add_needed_runner() {
+  local candidate="$1"
+  case $'\n'"$_NEEDED_RUNNERS"$'\n' in
+    *$'\n'"$candidate"$'\n'*) return 0 ;;
+  esac
+  _NEEDED_RUNNERS="${_NEEDED_RUNNERS}${candidate}"$'\n'
+}
 if [[ -n "${CASE_ID:-}" ]]; then
   _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
   if [[ -f "$_PRE_CASES_DIR/$CASE_ID.yaml" ]]; then
-    _PRE_CASE_FILES=("$_PRE_CASES_DIR/$CASE_ID.yaml")
+    _PRE_CASE_FILES="$_PRE_CASES_DIR/$CASE_ID.yaml"
   else
-    _PRE_CASE_FILES=()
+    _PRE_CASE_FILES=""
   fi
 else
   _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
+  _PRE_CASE_FILES=""
   if [[ -d "$_PRE_CASES_DIR" ]]; then
-    mapfile -t _PRE_CASE_FILES < <(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)
-  else
-    _PRE_CASE_FILES=()
+    _PRE_CASE_FILES="$(find "$_PRE_CASES_DIR" -maxdepth 1 -type f -name "*.yaml" | sort)"
   fi
 fi
-for _cf in "${_PRE_CASE_FILES[@]:-}"; do
+while IFS= read -r _cf; do
+  [[ -n "$_cf" ]] || continue
   [[ -f "$_cf" ]] || continue
   _cr="$(yq -r '.runner // "opencode"' "$_cf" 2>/dev/null || echo "opencode")"
-  _NEEDED_RUNNERS["$_cr"]=1
-done
-for _r in "${!_NEEDED_RUNNERS[@]}"; do
+  add_needed_runner "$_cr"
+done <<EOF
+$_PRE_CASE_FILES
+EOF
+while IFS= read -r _r; do
+  [[ -n "$_r" ]] || continue
   case "$_r" in
     opencode)       if ! preflight_check;          then exit 13; fi ;;
     langgraph-node) if ! preflight_check_langgraph; then exit 13; fi ;;
@@ -215,7 +225,10 @@ for _r in "${!_NEEDED_RUNNERS[@]}"; do
       exit 13
       ;;
   esac
-done
+done <<EOF
+$_NEEDED_RUNNERS
+EOF
+unset -f add_needed_runner
 unset _NEEDED_RUNNERS _cr _cf _r _PRE_CASES_DIR _PRE_CASE_FILES
 
 SKILLS_ROOT="$(resolve_skills_root)"
