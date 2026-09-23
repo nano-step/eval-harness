@@ -60,16 +60,40 @@ score_shell_is_unsafe() {
   return 1
 }
 
+score_shell_exact_lines() {
+  local out="$1"
+  local expected_json="$2"
+
+  jq -e -n \
+    --arg out "$out" \
+    --argjson expected "$expected_json" \
+    '
+      def drop_trailing_empty:
+        if length > 0 and .[-1] == "" then
+          .[0:-1] | drop_trailing_empty
+        else
+          .
+        end;
+
+      ($out
+        | split("\n")
+        | map(sub("[ \\t\\r]+$"; ""))
+        | drop_trailing_empty) == $expected
+    ' >/dev/null
+}
+
 score_shell() {
   local check_file="$1"; local workdir="$2"
   local cmd; cmd="$(yq -r '.cmd' "$check_file")"
   local expect_regex; expect_regex="$(yq -r '.expect_regex // empty' "$check_file")"
   local expect_min; expect_min="$(yq -r '.expect_min // empty' "$check_file")"
   local expect_exact; expect_exact="$(yq -r '.expect_exact // empty' "$check_file")"
+  local expect_exact_lines; expect_exact_lines="$(yq -o=json '.expect_exact_lines // []' "$check_file")"
+  local has_expect_exact_lines; has_expect_exact_lines="$(yq -o=json '.' "$check_file" | jq 'has("expect_exact_lines")')"
   local unsafe_opt_in; unsafe_opt_in="$(yq -r '.unsafe_shell // false' "$check_file" 2>/dev/null || echo false)"
 
   local has_expect_field
-  has_expect_field="$(yq -o=json '.' "$check_file" | jq 'has("expect_regex") or has("expect_min") or has("expect_exact")')"
+  has_expect_field="$(yq -o=json '.' "$check_file" | jq 'has("expect_regex") or has("expect_min") or has("expect_exact") or has("expect_exact_lines")')"
   if [[ "$has_expect_field" != "true" ]]; then
     jq -n \
       --arg cmd "$cmd" \
@@ -77,7 +101,7 @@ score_shell() {
         kind: "shell",
         passed: false,
         failed_check_id: ("shell:" + $cmd),
-        expected: "at least one expect_* field (expect_regex / expect_min / expect_exact)",
+        expected: "at least one expect_* field (expect_regex / expect_min / expect_exact / expect_exact_lines)",
         actual: "none set - check YAML for typo like expected_*",
         diff_hint: "this check is misconfigured; treating as harness error",
         error: true
@@ -116,6 +140,12 @@ score_shell() {
     fi
   elif [[ -n "$expect_exact" ]] && [[ "$(echo "$out" | tr -d '\n')" == "$expect_exact" ]]; then
     passed="true"
+  elif [[ "$has_expect_exact_lines" == "true" ]]; then
+    if score_shell_exact_lines "$out" "$expect_exact_lines"; then
+      passed="true"
+    else
+      diff_hint="output lines did not match expect_exact_lines after trailing whitespace normalization"
+    fi
   fi
 
   jq -n \
@@ -125,6 +155,8 @@ score_shell() {
     --arg expect_regex "$expect_regex" \
     --arg expect_min "$expect_min" \
     --arg expect_exact "$expect_exact" \
+    --arg expect_exact_lines "$expect_exact_lines" \
+    --argjson has_expect_exact_lines "$has_expect_exact_lines" \
     --argjson passed "$passed" \
     --arg diff_hint "$diff_hint" \
     '{
@@ -135,6 +167,7 @@ score_shell() {
         if $expect_regex != "" then $expect_regex
         elif $expect_min != "" then ("min " + $expect_min)
         elif $expect_exact != "" then $expect_exact
+        elif $has_expect_exact_lines then $expect_exact_lines
         else "(no expectation)"
         end),
       actual: $out,
@@ -371,7 +404,7 @@ run_all_checks() {
     }' > "$out"
 }
 
-export -f run_check run_all_checks score_shell score_jq_path_contains score_file_exists score_output_contains score_output_not_contains
+export -f run_check run_all_checks score_shell score_shell_exact_lines score_jq_path_contains score_file_exists score_output_contains score_output_not_contains
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in

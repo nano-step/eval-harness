@@ -145,7 +145,7 @@ Every case in `.opencode/skills/<skill>/evals/cases/*.yaml` declares one or more
 
 | # | Check kind | What it scores | Reliability |
 |---|---|---|---|
-| 1 | `shell`               | Runs a shell command in the case workdir; matches stdout against `expect_regex` / `expect_min` / `expect_exact`. | High — deterministic. |
+| 1 | `shell`               | Runs a shell command in the case workdir; matches stdout against `expect_regex` / `expect_min` / `expect_exact` / `expect_exact_lines`. | High — deterministic. |
 | 2 | `jq_path_contains`    | Reads a JSON file in workdir, walks a jq path, asserts the result array contains all `contains:` values. | High — deterministic. |
 | 3 | `file_exists`         | Asserts a file exists at the given path in workdir. | High — deterministic. |
 | 4 | `output_contains`     | Greps the opencode transcript for a literal string. Records `transcript_span` on hit. | High — deterministic, literal-only. |
@@ -293,6 +293,7 @@ If you need to know whether a specific factor is being checked, point at the cas
 | `bypass.sh`                   | `EVAL_BYPASS=1` exits 0 + writes bypass event (closes BLK-1) |
 | `shell_safety.sh`             | `score_shell` filter accepts jq/pipes/wc; rejects rm/curl/`$()`/backtick/`>`; honors `unsafe_shell:` opt-in (closes BLK-2) |
 | `shell_no_expectation.sh`     | `score_shell` treats missing `expect_*` fields as harness errors, not ordinary FAILs |
+| `shell_exact_lines.sh`        | `score_shell` compares ordered output lines, ignoring trailing whitespace and blank trailing lines |
 | `fixture_path_traversal.sh`   | Fixture copy rejects absolute paths + `..` segments (closes BLK-3) |
 | `attribution_portable.sh`     | Attribution works under GNU + BSD grep (closes BLK-4) |
 | `transcript_empty_guard.sh`   | Missing/empty transcript → harness error not vacuous PASS (closes BLK-7) |

@@ -6,6 +6,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Shell checks now support `expect_exact_lines` for ordered stdout line matching while ignoring trailing whitespace per line and blank trailing lines.
+
 ### Fixed
 
 - `preflight_check` now reports missing `python3` or PyYAML when the `yq` binary is absent and the yq-shim fallback would otherwise fail later without a useful hint.
