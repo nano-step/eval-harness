@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/portable.sh"
+
 # Usage: check_stability <runner_cmd> <samples_dir>
 # runner_cmd: shell command that emits one results.json per invocation
 # samples_dir: dir where samples will be written (sample-1.json, sample-2.json, sample-3.json)
@@ -21,7 +23,7 @@ check_stability() {
     bash -c "$runner_cmd" > "$out" 2>"$samples_dir/sample-$i.err" || true
     # Hash only the "checks" subtree — ignore timestamps and run IDs which are non-deterministic by design
     local h
-    h="$(jq -S '.checks // []' "$out" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+    h="$(jq -S '.checks // []' "$out" 2>/dev/null | portable_sha256_stdin | cut -d' ' -f1)"
     hashes+=("$h")
   done
 

@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! declare -F resolve_skills_root >/dev/null; then
   source "$SCRIPT_DIR/skills_root.sh"
 fi
+source "$SCRIPT_DIR/portable.sh"
 
 if ! declare -F dispatch_runner >/dev/null; then
   source "$SCRIPT_DIR/runner.sh"
@@ -72,7 +73,7 @@ spawn_opencode() {
     export EVAL_HARNESS_RUNNING=1
     export PATH="$workdir:$PATH"
     cd "$workdir"
-    timeout "$max_seconds" opencode run \
+    run_with_timeout "$max_seconds" opencode run \
       --model "$model" \
       --format json \
       --dir "$workdir" \

@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """yq-shim helper: a minimal yq-compatible subset for eval-harness.
 
+The stdlib parser exists for locked-down or air-gapped environments where the
+project's documented shell + jq + python3 stdlib toolchain is available but
+installing PyYAML or a yq binary is not. It is intentionally not a general YAML
+implementation. It supports the subset used by eval-harness config and case
+files: space-indented mappings and lists, null/bool/number/string scalars,
+inline arrays/maps, comments, and literal/folded block scalars. It does not
+support anchors, aliases, tags, multi-document streams, or arbitrary YAML 1.2
+features. When PyYAML is available and EVAL_YQ_FORCE_STDLIB is not set, PyYAML
+remains the default parser.
+
 Reads YAML from stdin or a file arg, applies a tiny expression language,
 prints scalars (with -r) or JSON / YAML output.
 """
@@ -8,8 +18,305 @@ import sys
 import json
 import re
 import argparse
+import ast
+import os
 
-import yaml
+if os.environ.get("EVAL_YQ_FORCE_STDLIB") == "1":
+    _pyyaml = None
+else:
+    try:
+        import yaml as _pyyaml
+    except ModuleNotFoundError:
+        _pyyaml = None
+
+
+def indent_of(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def next_content(lines, i):
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped and not stripped.startswith("#"):
+            return i
+        i += 1
+    return i
+
+
+def split_top_level(text, delimiter=","):
+    parts = []
+    buf = ""
+    quote = None
+    escape = False
+    depth = 0
+    for ch in text:
+        if quote:
+            buf += ch
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            buf += ch
+            continue
+        if ch in "[{(":
+            depth += 1
+        elif ch in "]})" and depth > 0:
+            depth -= 1
+        if ch == delimiter and depth == 0:
+            parts.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip() or text.endswith(delimiter):
+        parts.append(buf.strip())
+    return parts
+
+
+def split_key_value(text):
+    quote = None
+    escape = False
+    depth = 0
+    for i, ch in enumerate(text):
+        if quote:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            continue
+        if ch in "[{(":
+            depth += 1
+            continue
+        if ch in "]})" and depth > 0:
+            depth -= 1
+            continue
+        if ch == ":" and depth == 0:
+            return text[:i].strip(), text[i + 1 :].strip()
+    return None, None
+
+
+def strip_inline_comment(raw):
+    quote = None
+    escape = False
+    depth = 0
+    for i, ch in enumerate(raw):
+        if quote:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            continue
+        if ch in "[{(":
+            depth += 1
+            continue
+        if ch in "]})" and depth > 0:
+            depth -= 1
+            continue
+        if ch == "#" and depth == 0 and (i == 0 or raw[i - 1].isspace()):
+            return raw[:i].rstrip()
+    return raw
+
+
+def parse_scalar(raw):
+    value = strip_inline_comment(raw.strip())
+    if value == "":
+        return ""
+    if value in ("[]", "{}"):
+        return json.loads(value)
+    if value in ("null", "~"):
+        return None
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        try:
+            return ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            return value[1:-1]
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return [parse_scalar(part) for part in split_top_level(inner)]
+    if value.startswith("{") and value.endswith("}"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return {}
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            out = {}
+            for part in split_top_level(inner):
+                key, val = split_key_value(part)
+                if key is not None:
+                    out[str(parse_scalar(key))] = parse_scalar(val)
+            return out
+    if re.match(r"^-?[0-9]+$", value):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    if re.match(r"^-?[0-9]+\.[0-9]+$", value):
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    return value
+
+
+def parse_block_scalar(lines, i, parent_indent, style):
+    start = i
+    block_indent = None
+    while i < len(lines):
+        raw = lines[i]
+        if raw.strip():
+            ind = indent_of(raw)
+            if ind <= parent_indent:
+                break
+            block_indent = ind if block_indent is None else min(block_indent, ind)
+        i += 1
+    if block_indent is None:
+        return "", i
+
+    out_lines = []
+    for raw in lines[start:i]:
+        if not raw.strip():
+            out_lines.append("")
+        else:
+            out_lines.append(raw[block_indent:])
+    if style == ">":
+        return " ".join(line.strip() for line in out_lines).rstrip() + "\n", i
+    return "\n".join(out_lines).rstrip("\n") + "\n", i
+
+
+def parse_dict(lines, i, indent):
+    out = {}
+    while i < len(lines):
+        i = next_content(lines, i)
+        if i >= len(lines):
+            break
+        ind = indent_of(lines[i])
+        if ind < indent:
+            break
+        if ind > indent:
+            break
+        text = lines[i][ind:]
+        if text.startswith("- "):
+            break
+        key, raw_value = split_key_value(text)
+        if key is None:
+            break
+        key = parse_scalar(key)
+        raw_value = strip_inline_comment(raw_value)
+        if raw_value in ("|", ">"):
+            out[key], i = parse_block_scalar(lines, i + 1, ind, raw_value)
+            continue
+        if raw_value != "":
+            out[key] = parse_scalar(raw_value)
+            i += 1
+            continue
+
+        j = next_content(lines, i + 1)
+        if j >= len(lines) or indent_of(lines[j]) <= ind:
+            out[key] = None
+            i += 1
+            continue
+        out[key], i = parse_block(lines, j, indent_of(lines[j]))
+    return out, i
+
+
+def parse_list(lines, i, indent):
+    out = []
+    while i < len(lines):
+        i = next_content(lines, i)
+        if i >= len(lines):
+            break
+        ind = indent_of(lines[i])
+        if ind < indent:
+            break
+        if ind != indent:
+            break
+        text = lines[i][ind:]
+        if not text.startswith("- "):
+            break
+        item_text = strip_inline_comment(text[2:].strip())
+        if item_text == "":
+            j = next_content(lines, i + 1)
+            if j >= len(lines) or indent_of(lines[j]) <= ind:
+                out.append(None)
+                i += 1
+            else:
+                item, i = parse_block(lines, j, indent_of(lines[j]))
+                out.append(item)
+            continue
+
+        key, raw_value = split_key_value(item_text)
+        if key is None:
+            out.append(parse_scalar(item_text))
+            i += 1
+            continue
+
+        key = parse_scalar(key)
+        raw_value = strip_inline_comment(raw_value)
+        i += 1
+        j = next_content(lines, i)
+        if raw_value == "":
+            item = {key: None}
+            if j < len(lines) and indent_of(lines[j]) > ind:
+                item[key], i = parse_block(lines, j, indent_of(lines[j]))
+        else:
+            item = {key: parse_scalar(raw_value)}
+            if j < len(lines) and indent_of(lines[j]) > ind:
+                rest, i = parse_dict(lines, j, indent_of(lines[j]))
+                item.update(rest)
+        out.append(item)
+    return out, i
+
+
+def parse_block(lines, i, indent):
+    i = next_content(lines, i)
+    if i >= len(lines):
+        return None, i
+    ind = indent_of(lines[i])
+    if ind < indent:
+        return None, i
+    text = lines[i][ind:]
+    if text.startswith("- "):
+        return parse_list(lines, i, ind)
+    return parse_dict(lines, i, ind)
+
+
+def load_document(text):
+    if not text.strip():
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    if _pyyaml is not None:
+        return _pyyaml.safe_load(text)
+    data, _ = parse_block(text.splitlines(), 0, 0)
+    return data
 
 
 def navigate(data, expr):
@@ -137,8 +444,10 @@ def emit(result, raw, out_format, is_iter):
     else:
         if result is None:
             print("null")
+        elif _pyyaml is None:
+            print(json.dumps(result, ensure_ascii=False))
         else:
-            print(yaml.safe_dump(result, default_flow_style=False, sort_keys=False).rstrip())
+            print(_pyyaml.safe_dump(result, default_flow_style=False, sort_keys=False).rstrip())
 
 
 def main():
@@ -170,9 +479,9 @@ def main():
 
     if args.file:
         with open(args.file) as f:
-            data = yaml.safe_load(f)
+            data = load_document(f.read())
     else:
-        data = yaml.safe_load(sys.stdin)
+        data = load_document(sys.stdin.read())
 
     result = evaluate(data, args.expr)
     expr_norm = args.expr.strip()

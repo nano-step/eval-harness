@@ -15,6 +15,8 @@ if ! declare -F resolve_skills_root >/dev/null; then
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/skills_root.sh"
 fi
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/portable.sh"
+
 # Usage: capture_manifest <skill_under_test> <output_path>
 # Writes a JSON manifest to <output_path>
 capture_manifest() {
@@ -46,9 +48,9 @@ capture_manifest() {
   local skill_bundle_sha
   if [[ -d "$skills_root" ]]; then
     skill_bundle_sha="$(cd "$skills_root" && find . -type f \( -name "*.md" -o -name "*.sh" -o -name "*.yaml" -o -name "*.json" \) -print0 \
-      | sort -z \
-      | while IFS= read -r -d $'\0' f; do sha256sum "$f" 2>/dev/null; done \
-      | sha256sum \
+      | portable_sort_nul \
+      | while IFS= read -r -d '' file; do portable_sha256_file "$file"; done \
+      | portable_sha256_stdin \
       | cut -d' ' -f1)"
   else
     skill_bundle_sha="missing"
@@ -58,9 +60,9 @@ capture_manifest() {
   local skill_sha="missing"
   if [[ -d "$skill_dir" ]]; then
     skill_sha="$(cd "$skill_dir" && find . -type f -print0 \
-      | sort -z \
-      | while IFS= read -r -d $'\0' f; do sha256sum "$f" 2>/dev/null; done \
-      | sha256sum \
+      | portable_sort_nul \
+      | while IFS= read -r -d '' file; do portable_sha256_file "$file"; done \
+      | portable_sha256_stdin \
       | cut -d' ' -f1)"
   fi
 
@@ -68,9 +70,9 @@ capture_manifest() {
   local fixture_sha="none"
   if [[ -n "${EVAL_FIXTURE_DIR:-}" ]] && [[ -d "$EVAL_FIXTURE_DIR" ]]; then
     fixture_sha="$(cd "$EVAL_FIXTURE_DIR" && find . -type f -print0 \
-      | sort -z \
-      | while IFS= read -r -d $'\0' f; do sha256sum "$f" 2>/dev/null; done \
-      | sha256sum \
+      | portable_sort_nul \
+      | while IFS= read -r -d '' file; do portable_sha256_file "$file"; done \
+      | portable_sha256_stdin \
       | cut -d' ' -f1)"
   fi
 

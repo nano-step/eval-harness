@@ -1,0 +1,54 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  shell-tests:
+    name: shell tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is available
+        run: |
+          if command -v jq >/dev/null 2>&1; then
+            exit 0
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install jq
+          else
+            echo "Unsupported runner OS for jq install: $RUNNER_OS" >&2
+            exit 1
+          fi
+
+      - name: Show tool versions
+        run: |
+          bash --version
+          jq --version
+          python3 --version
+
+      - name: Run eval-harness shell tests
+        run: |
+          set -euo pipefail
+          for t in scripts/eval/tests/*.sh; do
+            echo "== $(basename "$t")"
+            bash "$t"
+          done
