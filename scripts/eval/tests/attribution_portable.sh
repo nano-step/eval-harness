@@ -20,7 +20,7 @@ run '{"keys_changed":["skill_sha"],"details":{}}'         SKILL_CHANGED
 run '{"keys_changed":["fixture_sha"],"details":{}}'       FIXTURE_STALE
 run '{"keys_changed":["model_id"],"details":{}}'          MODEL_CHANGED
 run '{"keys_changed":["opencode_version"],"details":{}}'  MODEL_CHANGED
-run '{"keys_changed":["__no_baseline__"],"details":{}}'   UNKNOWN_DRIFT
+run '{"keys_changed":["__no_baseline__"],"details":{}}'   NO_BASELINE
 run '{"keys_changed":[],"details":{}}'                    UNKNOWN_DRIFT
 
 multi="$(bash "$ATTR" '{"keys_changed":["skill_sha","fixture_sha"],"details":{}}')"

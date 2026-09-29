@@ -7,45 +7,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/../lib/portable.sh" ]]; then
-  # shellcheck source=../lib/portable.sh
-  source "$SCRIPT_DIR/../lib/portable.sh"
-else
-  run_with_timeout() {
-    local max_seconds="$1"
-    shift
-    if command -v timeout >/dev/null 2>&1; then
-      timeout "$max_seconds" "$@"
-      return $?
-    fi
-    if command -v gtimeout >/dev/null 2>&1; then
-      gtimeout "$max_seconds" "$@"
-      return $?
-    fi
-    if command -v python3 >/dev/null 2>&1; then
-      python3 - "$max_seconds" "$@" <<'PY'
-import subprocess
-import sys
-
-timeout = float(sys.argv[1])
-cmd = sys.argv[2:]
-if not cmd:
-    sys.exit(2)
-try:
-    completed = subprocess.run(cmd, timeout=timeout)
-    sys.exit(completed.returncode)
-except subprocess.TimeoutExpired:
-    sys.exit(124)
-except FileNotFoundError:
-    print(f"[eval-harness] command not found: {cmd[0]}", file=sys.stderr)
-    sys.exit(127)
-PY
-      return $?
-    fi
-    echo "[eval-harness] missing timeout tool: install timeout, gtimeout, or python3" >&2
-    return 127
-  }
+LIB_DIR="$SCRIPT_DIR/../lib"
+if [[ ! -f "$LIB_DIR/config.sh" ]]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  LIB_DIR="$REPO_ROOT/scripts/eval/lib"
 fi
+if [[ ! -f "$LIB_DIR/config.sh" ]]; then
+  echo "[eval-harness] pre-push: eval-harness libraries not found" >&2
+  exit 13
+fi
+source "$LIB_DIR/yq-shim.sh"
+source "$LIB_DIR/skills_root.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/portable.sh"
 
 REMOTE="${1:-origin}"
 URL="${2:-}"
@@ -54,6 +28,13 @@ URL="${2:-}"
 affected_skills=()
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [[ "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
+    continue
+  fi
+
+  branch=""
+  case "$local_ref" in refs/heads/*) branch="${local_ref#refs/heads/}" ;; esac
+  if [[ -n "$branch" ]] && ! pre_push_should_fire "$branch"; then
+    echo "[eval-harness] pre-push: skipping branch '$branch' (filtered by pre_push.branches config)" >&2
     continue
   fi
   if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
@@ -83,10 +64,11 @@ echo "$unique_skills" | sed 's/^/  - /' >&2
 EVAL_HARNESS_BIN="${EVAL_HARNESS_BIN:-eval-harness}"
 exit_code=0
 for skill in $unique_skills; do
-  rc=0
-  run_with_timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push || rc=$?
-  if [[ "$rc" -ne 0 ]]; then
-    exit_code="$rc"
+  if run_with_timeout 60 "$EVAL_HARNESS_BIN" --skill="$skill" --trigger=pre-push; then
+    :
+  else
+    run_rc=$?
+    if [[ "$exit_code" -eq 0 ]]; then exit_code="$run_rc"; fi
   fi
 done
 

@@ -1,7 +1,7 @@
 {
   "name": "@nano-step/eval-harness",
-  "version": "0.4.2",
-  "description": "Behavior-regression eval harness for opencode skills. Bash-first, 4-class attribution, structured-output skills only.",
+  "version": "0.5.0",
+  "description": "Bash-first typed capability, product-quality, and regression evaluation harness for OpenCode skills.",
   "license": "MIT",
   "author": "Hoài Nhớ <nhoxtvt@gmail.com>",
   "homepage": "https://github.com/nano-step/eval-harness",
@@ -27,13 +27,19 @@
     "scripts/",
     "skills/",
     "standards/",
+    "docs/",
+    "examples/",
+    "pricing.json",
     "README.md",
+    "CHANGELOG.md",
+    "POLICY.md",
+    "KNOWN_ISSUES.md",
     "LICENSE"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "test": "bash scripts/eval/tests/regression_inject.sh"
+    "test": "bash scripts/eval/test.sh"
   }
 }

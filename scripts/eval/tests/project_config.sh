@@ -42,5 +42,31 @@ apply_project_config
 [[ "$EVAL_MODEL" == "explicit-env-wins" ]] || { echo "FAIL: env-var precedence broken; got '$EVAL_MODEL'" >&2; exit 1; }
 [[ "$EVAL_BUDGET_USD" == "5.0" || "$EVAL_BUDGET_USD" == "5.00" ]] || { echo "FAIL: BUDGET should fill from config when unset, got '$EVAL_BUDGET_USD'" >&2; exit 1; }
 
+
+pre_push_should_fire "feature/topic" || { echo "FAIL: branches should fire when no filters are configured" >&2; exit 1; }
+cat > "$WORK/proj/.opencode/eval-harness.yaml" <<YAML
+pre_push:
+  branches:
+    include: ["release/*"]
+    exclude: ["release/skip"]
+YAML
+pre_push_should_fire "release/v0.5.0" || { echo "FAIL: included branch was skipped" >&2; exit 1; }
+pre_push_should_fire "release/skip" || { echo "FAIL: include should take precedence over exclude" >&2; exit 1; }
+if pre_push_should_fire "feature/topic"; then
+  echo "FAIL: branch outside include was allowed" >&2
+  exit 1
+fi
+cat > "$WORK/proj/.opencode/eval-harness.yaml" <<YAML
+pre_push:
+  branches:
+    exclude: ["wip/*"]
+YAML
+if pre_push_should_fire "wip/experiment"; then
+  echo "FAIL: excluded branch was allowed" >&2
+  exit 1
+fi
+pre_push_should_fire "main" || { echo "FAIL: unrelated branch was excluded" >&2; exit 1; }
+
+echo "PASS: project-config resolution, precedence, and pre-push branch policy"
 echo "PASS: project-config layer resolved + applied with correct precedence"
 exit 0

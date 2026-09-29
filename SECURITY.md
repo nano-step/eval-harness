@@ -4,9 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.4.x   | ✅ Active |
-| 0.3.x   | ⚠️  Security-only, until 2026-09-01 |
-| < 0.3   | ❌ EOL    |
+| 0.5.x   | ✅ Active |
+| 0.4.x   | ⚠️  Security-only |
+| < 0.4   | ❌ EOL    |
 
 ## Reporting a vulnerability
 
@@ -29,13 +29,11 @@ You will get an acknowledgement within **72 hours**. We will work with you on a 
 
 ## Security model
 
-eval-harness runs **user-supplied shell commands** in case YAMLs and **fetches user-supplied skill files** from disk. It is **not** designed to be a sandbox against malicious case authors. If you are running cases authored by people you do not trust, you must add additional isolation (containers, VMs, jails) yourself.
+eval-harness does not treat case YAML as a trust boundary and is not an OS sandbox. It fetches skill files from disk and runs OpenCode/runner processes with the harness user's privileges. Use cases from sources you trust; isolate the entire run in a container or VM when evaluating untrusted repositories.
 
-Specifically:
+Implicit-safe `kind: shell` checks are parsed into a constrained argv pipeline containing only `jq`, `printf`, and terminal `wc -l`; `jq` input paths must resolve to regular files beneath the workdir, and the default path does not invoke a shell. This narrows command execution but is not a kernel-enforced sandbox. Setting `unsafe_shell: true` or `EVAL_ALLOW_UNSAFE_SHELL=1` runs the command via `bash -c` with the user's permissions.
 
-- `kind: shell` checks **are** filtered by `score_shell_is_unsafe` (no `rm`, no `curl`, no `$()`, no backticks, no `>` redirection) unless `unsafe_shell: true` is explicitly set in the case.
-- Fixture paths **are** rejected if they contain `..` segments or are absolute (per `fixture_path_traversal.sh` test).
-- LLM-judge prompts **are** sent to Anthropic's API. Do not put secrets in your case prompts. The harness redacts known env-var patterns; it cannot redact what it does not know about.
+Fixture paths and grader artifact paths are checked for workdir confinement. LLM-judge prompts are sent to Anthropic when live judging is enabled; never include secrets in case prompts. The harness cannot redact unknown sensitive content.
 
 ## Past security advisories
 

@@ -111,7 +111,7 @@ propose_fix() {
             confidence: "high",
             instruction: ("Create this file: " + $path),
             patch_snippet: $path,
-            auto_apply: false
+            auto_apply: true
           }
         }'
       ;;

@@ -30,6 +30,7 @@
 # so score.sh's output_contains / transcript_contains checks work unchanged.
 
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/portable.sh"
 
 # --- helpers ---------------------------------------------------------------
 
@@ -88,7 +89,7 @@ _cache_root() {
 _requirements_hash() {
   local workdir="$1"
   if [[ -f "$workdir/requirements.txt" ]]; then
-    sha256sum "$workdir/requirements.txt" | cut -d' ' -f1
+    portable_sha256_file "$workdir/requirements.txt" | cut -d' ' -f1
   else
     printf '%s\n' "no-requirements"
   fi
@@ -369,39 +370,39 @@ langgraph_node_fingerprint() {
     return 0
   fi
 
-  # Collect files to hash, one path per line. Each line is sha256summed
-  # individually and the concatenated output is then re-hashed so the
-  # final fingerprint is a single hex string.
-  local hash_input=""
-  hash_input+="$(sha256sum "$module_path" 2>/dev/null)"$'\n'
-
-  # Build a list of files that actually exist. Iterating a literal glob
-  # with no matches would pass the glob string itself to grep, which
-  # prints to stderr (silenced) and returns no match — leaving the
-  # @tool-bodies hash empty even when a real mutation has happened.
-  local files_to_grep=("$module_path")
-
-  # Optional tool modules and prompt templates
-  for f in "$workdir"/tools/*.py; do
-    if [[ -f "$f" ]]; then
-      hash_input+="$(sha256sum "$f" 2>/dev/null)"$'\n'
+  local files_to_grep=("$module_path") f rel file_sha module_sha tool_bodies
+  local tool_files=() prompt_files=() has_tool_files=0 has_prompt_files=0
+  if [[ -d "$workdir/tools" ]]; then
+    while IFS= read -r -d '' f; do
+      tool_files+=("$f")
       files_to_grep+=("$f")
+      has_tool_files=1
+    done < <(find "$workdir/tools" -maxdepth 1 -type f -name '*.py' -print0 | portable_sort_nul)
+  fi
+  while IFS= read -r -d '' f; do
+    prompt_files+=("$f")
+    has_prompt_files=1
+  done < <(find "$workdir" -maxdepth 1 -type f -name 'prompt_template_*.txt' -print0 | portable_sort_nul)
+  module_sha="$(portable_sha256_file "$module_path" | cut -d' ' -f1)"
+  tool_bodies="$( { grep -h -B1 -A2 -E '^@tool' "${files_to_grep[@]}" 2>/dev/null || true; } | portable_sha256_stdin | cut -d' ' -f1)"
+  {
+    printf '%s\0%s\0%s\0' module "$module_file" "$module_sha"
+    if [[ "$has_tool_files" == "1" ]]; then
+      for f in "${tool_files[@]}"; do
+        rel="${f#"$workdir"/}"
+        file_sha="$(portable_sha256_file "$f" | cut -d' ' -f1)"
+        printf '%s\0%s\0%s\0' tool-module "$rel" "$file_sha"
+      done
     fi
-  done
-  for f in "$workdir"/prompt_template_*.txt; do
-    [[ -f "$f" ]] && hash_input+="$(sha256sum "$f" 2>/dev/null)"$'\n'
-  done
-
-  # @tool-decorated function bodies. Grep for the @tool marker with
-  # one preceding context line (the `def`) so we capture each function
-  # body. We hash the marker+def line+the next line (the body) so a
-  # mutation to the function body flips the fingerprint even if the
-  # decorator+signature stay the same.
-  local tool_bodies
-  tool_bodies="$(grep -B1 -A2 -E '^@tool' "${files_to_grep[@]}" 2>/dev/null | sha256sum 2>/dev/null || true)"
-  hash_input+="${tool_bodies}"$'\n'
-
-  printf '%s\n' "$hash_input" | sha256sum | cut -d' ' -f1
+    if [[ "$has_prompt_files" == "1" ]]; then
+      for f in "${prompt_files[@]}"; do
+        rel="${f#"$workdir"/}"
+        file_sha="$(portable_sha256_file "$f" | cut -d' ' -f1)"
+        printf '%s\0%s\0%s\0' prompt-template "$rel" "$file_sha"
+      done
+    fi
+    printf '%s\0%s\0' tool-bodies "$tool_bodies"
+  } | portable_sha256_stdin | cut -d' ' -f1
   return 0
 }
 

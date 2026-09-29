@@ -1,113 +1,95 @@
 ---
 name: eval-harness
-description: Detects behavior regressions in opencode skills by running structured eval cases and comparing against committed baselines. Use whenever you say "run evals", "check regression", "baseline this skill", "did my skill regress", "did this prompt regress", "A/B these two skills" — or after editing any skill in `.opencode/skills/**`. Wires into `sync-skill-to-manager` as a pre-publish gate (opt-in per skill via `skill.yaml: evals.required`). Ships 4-class attribution (SKILL_CHANGED / FIXTURE_STALE / MODEL_CHANGED / UNKNOWN_DRIFT), 6-field FAIL diagnostics (failed_check_id, expected, actual, diff_hint, transcript_span, env_delta), and a one-command rerun affordance on every failure. v0.1.0 scope: structured-output skills only — prose-output skills (pr-code-reviewer, od-workflow, blog-workflow, idea-workflow) are deferred to v0.3 LLM-judge.
+description: Run, grade, baseline, accept, rebaseline, or compare skill evaluations. Use for regression checks, capability or product metrics, human review, A/B comparisons, and evaluation-harness questions. Interpret typed statuses and evidence rather than treating every nonzero check as a regression.
 compatibility: opencode 1.15.10+
-version: 0.4.2
+version: 0.5.0
 ---
 
 # eval-harness
 
-Behavior-regression detector for opencode skills. Bash-first, 4-class attribution, structured-output skills only.
+Typed evaluation harness for OpenCode skills, with a provider-neutral grader for externally produced evidence. Use repository commands; never infer results from a baseline label or a missing artifact.
 
-## Triggers
+## Case contract
 
-Fire this skill on any of these user phrases:
-- `run evals`, `run evals for <skill>`
-- `check if this regressed`, `check regression`
-- `baseline this skill`, `baseline <skill>`
-- `did <skill> regress?`, `is my skill still working?`
-- `A/B these two skills`
-- `accept new behavior as baseline`
+Each case has an eval_type:
 
-Also fires automatically via:
-- `git pre-push` hook (when commits touch `.opencode/skills/**`)
-- `sync-skill-to-manager` pre-publish hook (if skill opted in via `skill.yaml: evals.required: true`)
+- regression (default): compare against an existing baseline.
+- capability: test declared capability; baseline comparison is off unless explicitly enabled.
+- product: report independent named quality dimensions; baseline comparison is off unless explicitly enabled.
 
-## What it does (v0.2.0)
+Required check outcomes gate the case. Optional checks report but do not gate. Product dimensions use per-dimension weighted means; do not compute or invent a global product score.
 
-Given a baselined skill, eval-harness:
-1. Runs each case in a fully-sandboxed ephemeral environment (fresh `HOME`, `OPENCODE_CONFIG_DIR`, `NANO_BRAIN_ROOT`, cwd).
-2. Runs **all** checks per case (no first-fail-exit) and aggregates failures.
-3. On FAIL: classifies into `SKILL_CHANGED` / `FIXTURE_STALE` / `MODEL_CHANGED` / `UNKNOWN_DRIFT` via env-manifest diff.
-4. Emits 6-field FAIL diagnostics: `failed_check_id`, `expected`, `actual`, `diff_hint`, `transcript_span`, `env_delta`.
-5. Provides one-command rerun: `bash run.sh --case=X --skill=Y --debug --pin-env=baseline`.
-6. Writes to `~/.config/opencode/eval-harness/runs/<id>/{results.json, diff.md, env-manifest.json, transcript.jsonl}`.
-7. Appends a run event to `history.ndjson` for `eval-harness trend`.
+Result statuses:
+
+- PASS: every required gate has measured passing evidence.
+- FAIL: at least one required, measured grader failed.
+- ERROR: malformed evaluation configuration or harness/scorer execution error.
+- NEEDS_REVIEW: a required human review is pending.
+- INDETERMINATE: required evidence is unavailable or a grader abstained.
+
+A regression is only a compared case whose baseline passed and whose current status is FAIL. Capability/product failures are not regressions unless compare_to_baseline is explicitly true. Missing evidence never becomes PASS or a zero score.
 
 ## Commands
 
-```bash
-# Run all cases for a skill
-eval-harness run --skill=omo-session-distiller
+Run local deterministic suites:
 
-# Run one case
-eval-harness run --skill=omo-session-distiller --case=atom-shape-basic
+    npm test
 
-# Establish/refresh baseline (writes baselines/<case>.baseline.json)
-eval-harness baseline --skill=omo-session-distiller
+Run a skill or one case:
 
-# Accept current behavior as new baseline (fixture only)
-eval-harness accept --skill=omo-session-distiller --case=atom-shape-basic
+    eval-harness run --skill=<name>
+    eval-harness run --skill=<name> --case=<case-id> --strict
 
-# Also bless current env-manifest (requires confirmation; allows silent model upgrades)
-eval-harness accept --skill=omo-session-distiller --case=atom-shape-basic --bless-env
+Strict exits: 12 regression, 13 harness error, 14 measured failure, 15 pending review, 16 indeterminate evidence. Without --strict, evaluation failures remain recorded as typed warn-only results.
 
-# Inspect latest result
-eval-harness status --latest
+Establish a baseline only from a passing run:
 
-# Trend over last 20 runs
-eval-harness trend --last=20
+    eval-harness baseline --skill=<name> [--case=<case-id>] [--portable]
 
-# Promote from WARN-ONLY (default) to BLOCKING (exit 12 actually blocks)
-eval-harness promote   # requires 7-day green history + 0 bypass events
-```
+Accept one passing run; pass --run=<run-id> to select it exactly:
 
-## Exit codes
+    eval-harness accept --skill=<name> --case=<case-id> --run=<run-id>
+    eval-harness accept --skill=<name> --case=<case-id> --run=<run-id> --bless-env --yes
 
-| Code | Meaning |
-|---|---|
-| 0  | All cases pass (or warn-only mode hides regression) |
-| 12 | Regression detected AND harness promoted to blocking |
-| 13 | Harness/scorer error (NOT a skill regression) |
+Use --bless-env only when the changed environment is intended. Rebaseline refuses ERROR, NEEDS_REVIEW, and INDETERMINATE evidence. --accept-model-change is an explicit override for a genuine model upgrade, and writes an audit event.
 
-## Scope (read before relying on it)
+Grade external artifacts without invoking a model:
 
-**v0.1.0 is for structured-output skills only.** Cases score via:
-- `shell` (deterministic command + expected output)
-- `jq_path_contains` (JSON path contains required values)
-- `file_exists`
-- `output_contains` / `output_not_contains` (literal grep in transcript)
+    eval-harness grade --manifest=<grading-manifest.json> --strict
 
-**Prose-output skills cannot be evaluated reliably in v0.1.0.** Deferred to v0.3 (LLM judge with cross-model debias + 3-sample majority).
+Schema-1 manifests bind the case file, workdir tree, transcript, referenced artifacts, environment manifest, IDs, and provenance with digests. The grader confines paths to the manifest root and rejects changed content.
 
-## Warn-only mode (default)
+Compare two skills, optionally under different models:
 
-After installation, eval-harness ships in WARN-ONLY mode for 7 days:
-- regressions still detected, diff.md still generated, history.ndjson still appended
-- exit code is 0 (push proceeds)
-- promote via `eval-harness promote` once you've run 7 green days
+    eval-harness ab --base=<skill-a> --candidate=<skill-b> --base-model=<provider/model-a> --candidate-model=<provider/model-b>
 
-This protects against ecosystem-wide block-rage on day 1 when cases are still being tuned.
+A/B reports per-case statuses, per-dimension deltas, and resource coverage. --warn-cost-increase-pct is warning-only; it is not a quality gate.
 
-## Bypass
+## Check kinds
 
-```bash
-EVAL_BYPASS=1 git push origin main
-# → logged to history.ndjson with timestamp + skill + trigger
-# → push proceeds regardless of eval state
-```
+- shell, jq_path_contains, file_exists: deterministic workdir evidence.
+- output_contains, output_not_contains: literal transcript evidence; missing transcript is unavailable, not proof of absence.
+- llm_judge: model-judged rubric; unresolved votes are indeterminate, never fabricated PASS.
+- metric_score: JSON number in [0,1], optional minimum, named dimension, and positive weight.
+- trajectory: ordered JSONL events with strictly increasing unique seq values and declared rules.
+- human_review: sidecar record with reviewer, rubric version, timestamp, and PASS/FAIL verdict; missing or pending record requires review.
 
-## Limitations
+Cases must include at least one required grader. Invalid types, empty checks, and all-optional checks are ERROR.
 
-1. Structured-output skills only (v0.3 adds LLM judge for prose).
-2. Deterministic mode only (T=0, k=1); `pass@k` stochastic mode deferred to v0.2.
-3. opencode 1.15.10 lacks `--max-turns` / `--skills` / `--prompt-file` flags. Compensated via `timeout(1)` + ephemeral `OPENCODE_CONFIG_DIR`.
-4. Real network calls disabled by default. `--realenv` flag for opt-in quarantined cases.
-5. Single-tier (no smoke/full); 2-tier deferred to v0.2 when LLM judge enters.
-6. opencode Stop hook ships as a SCAFFOLD in v0.2.0 — active only on opencode ≥ 1.16 plugin API. Until then, see `scripts/eval/hooks/HOOKS.md` for manual invocation.
+## Reliability, resources, and provenance
 
-## See also
+For repeated attempts of one case/configuration, pass@k = 1-(1-p)^k and pass^k = p^k; Wilson bounds are reported. IID is an explicit assumption, not empirically verified. Stability reruns do not count as independent reliability samples. Do not pool different cases or configurations.
 
-- Standards: [`standards/skill-quality-v1.md`](../../standards/skill-quality-v1.md) — separate skill-design review rubric (the `skill-reviewer` SKILL will consume this)
-- Demo: `npm test` runs `scripts/eval/tests/regression_inject.sh` end-to-end
-- Source: https://github.com/nano-step/eval-harness
+Token, cost, and duration fields carry measured/partial/unavailable coverage. Unknown cost is null, never zero. With EVAL_BUDGET_USD enabled, unmeasured daily spend is recorded as unavailable and blocks later budget-gated runs until reconciled.
+
+Environment manifest schema 4 captures model/runtime/platform, skill/bundle/fixture hashes, prompt/rubric hashes, and an optional tool-manifest hash. Legacy schema-2/3 baselines remain comparable; new hashes are ignored when absent from a legacy baseline.
+
+Attribution classes describe changed evidence, not causation: SKILL_CHANGED, CROSS_SKILL_CHANGE, FIXTURE_STALE, MODEL_CHANGED, PROMPT_CHANGED, RUBRIC_CHANGED, TOOL_MANIFEST_CHANGED, ENVIRONMENT_CHANGED, EVIDENCE_AVAILABILITY_CHANGED, NON_DETERMINISTIC_DRIFT, NO_BASELINE, UNKNOWN_DRIFT. Cross-skill changes are hash co-occurrence only.
+
+Ordinary promotion requires a green daily-stats record for every configured day (default seven) and zero bypasses. --force is an explicit override. Auto-promotion uses the same readiness criteria.
+
+## Sources
+
+- v2 architecture, schemas, gate predicate, migration plan, and dogfood report: docs/EVAL_HARNESS_V2.md
+- ECC source snapshot, audit, and comparison: docs/ECC_RESEARCH.md
+- Skill-design review is separate: standards/skill-quality-v1.md

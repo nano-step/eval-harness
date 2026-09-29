@@ -254,10 +254,16 @@ bash "$EVAL_BIN" --skill="$SKILL_NAME" --case="$TEST3_CASE" --trigger=baseline \
 ec=$?
 set -e
 echo "  baseline run exit: $ec"
-bash "$SCRIPT_DIR/../baseline.sh" --skill="$SKILL_NAME" --case="$TEST3_CASE" --force \
-  > "$WORK/baseline-write.log" 2>&1
-ec=$?
-echo "  baseline write exit: $ec"
+set +e
+bash "$SCRIPT_DIR/../baseline.sh" --skill="$SKILL_NAME" --case="$TEST3_CASE" --force > "$WORK/baseline-write.log" 2>&1
+baseline_write_rc=$?
+set -e
+echo "  baseline write exit: $baseline_write_rc"
+if [[ "$baseline_write_rc" != "0" ]]; then
+  echo "  TEST 3: FAIL (baseline write failed)" >&2
+  sed 's/^/      /' "$WORK/baseline-write.log" | tail -20
+  ok=0
+fi
 BASELINE_FILE="$OPENCODE_SKILLS_ROOT/$SKILL_NAME/evals/baselines/$TEST3_CASE.baseline.json"
 [[ -f "$BASELINE_FILE" ]] && echo "  baseline file: $BASELINE_FILE" \
   || { echo "  TEST 3: FAIL (no baseline written)" >&2; ok=0; }
@@ -532,22 +538,23 @@ else
   ok=0
 fi
 
-# --- 7f: langgraph_node_fingerprint accepts <workdir> <config_json> (U4) -----
-# Use a temp dir containing a graph.py.
+# --- 7f: fingerprints are stable across config forms and run workdirs ---------
 FPRINT_WD="$(mktemp -d -t eval-harness-fprint.XXXXXX)"
+FPRINT_WD2="$(mktemp -d -t eval-harness-fprint2.XXXXXX)"
 cp "$REPO_ROOT/examples/langgraph-runner/graph.py" "$FPRINT_WD/graph.py"
+cp "$REPO_ROOT/examples/langgraph-runner/graph.py" "$FPRINT_WD2/graph.py"
 FP1="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{"module":"graph.py"}' 2>/dev/null)"
 FP2="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{}' 2>/dev/null)"
 FP3="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" "" 2>/dev/null)"
+FP4="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD2" '{"module":"graph.py"}' 2>/dev/null)"
 FP_MISSING="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "$FPRINT_WD" '{"module":"no-such-file.py"}' 2>/dev/null)"
 FP_NO_WD="$(bash "$SCRIPT_DIR/../runners/langgraph-node.sh" fingerprint "/nonexistent-eval-harness-path" '{"module":"graph.py"}' 2>/dev/null)"
-rm -rf "$FPRINT_WD"
+rm -rf "$FPRINT_WD" "$FPRINT_WD2"
 
-# FP1, FP2, FP3 must be 64-char hex hashes and all equal (same module).
-if [[ "$FP1" =~ ^[a-f0-9]{64}$ ]] && [[ "$FP1" == "$FP2" ]] && [[ "$FP1" == "$FP3" ]]; then
-  echo "  7f: PASS (fingerprint stable across config forms: ${FP1:0:12}...)"
+if [[ "$FP1" =~ ^[a-f0-9]{64}$ ]] && [[ "$FP1" == "$FP2" ]] && [[ "$FP1" == "$FP3" ]] && [[ "$FP1" == "$FP4" ]]; then
+  echo "  7f: PASS (fingerprint stable across config forms and workdirs: ${FP1:0:12}...)"
 else
-  echo "  7f: FAIL (FP1=$FP1 FP2=$FP2 FP3=$FP3)" >&2
+  echo "  7f: FAIL (FP1=$FP1 FP2=$FP2 FP3=$FP3 FP4=$FP4)" >&2
   ok=0
 fi
 if [[ "$FP_MISSING" == "no-module" ]]; then
@@ -575,6 +582,59 @@ if [[ "$FP_CLI_OUT" =~ ^[a-f0-9]{64}$ ]]; then
   echo "  7i: PASS (CLI guard emits 64-char hash for <workdir> <config_json>)"
 else
   echo "  7i: FAIL (CLI guard emitted: $FP_CLI_OUT)" >&2
+  ok=0
+fi
+
+# --- 7j: stochastic samples dispatch through LangGraph in isolated workdirs --
+cat > "$SKILL_DIR/evals/cases/stochastic-run.yaml" <<'YAML'
+schema_version: 2
+id: stochastic-run
+mode: stochastic
+samples: 3
+pass_threshold: 3
+runner: langgraph-node
+setup:
+  fixtures:
+    "graph.py": fixtures/graph.py
+    "input.json": fixtures/input.json
+    "requirements.txt": fixtures/requirements.txt
+runner_config:
+  entry_point: "graph:run"
+  module: "graph.py"
+  input: "input.json"
+  output: "output.json"
+prompt: "stub stochastic graph"
+checks:
+  - kind: file_exists
+    path: output.json
+YAML
+spawns_before="$(grep -c 'argv=-m' "$EVAL_STUB_TRACE" || true)"
+set +e
+bash "$EVAL_BIN" --skill="$SKILL_NAME" --case=stochastic-run --trigger=manual > "$WORK/stochastic.log" 2>&1
+stochastic_rc=$?
+set -e
+stochastic_run_id="$(awk -F 'run_id=' '/run_id=/{print $2; exit}' "$WORK/stochastic.log")"
+stochastic_run_dir="$EVAL_STATE_DIR/runs/$stochastic_run_id"
+spawns_after="$(grep -c 'argv=-m' "$EVAL_STUB_TRACE" || true)"
+if [[ "$stochastic_rc" == "0" && -n "$stochastic_run_id" ]]; then
+  stochastic_result_valid=false
+  if jq -e '.cases[0].status == "PASS" and .cases[0].stochastic.samples == 3 and .cases[0].stochastic.sample_pass_count == 3' "$stochastic_run_dir/results.json" >/dev/null; then stochastic_result_valid=true; fi
+  if [[ "$stochastic_result_valid" == "true" && $((spawns_after-spawns_before)) == "3" ]]; then
+    sample_outputs=("$stochastic_run_dir/stochastic-run/stochastic/sample-"*/workdir/output.json)
+    if [[ "${#sample_outputs[@]}" == "3" ]] && [[ -f "${sample_outputs[0]}" && -f "${sample_outputs[1]}" && -f "${sample_outputs[2]}" ]]; then
+      echo "  7j: PASS (three runner invocations produced isolated per-sample outputs)"
+    else
+      echo "  7j: FAIL (expected one output.json in each of three sample workdirs)" >&2
+      ok=0
+    fi
+  else
+    echo "  7j: FAIL (exit=$stochastic_rc, spawn delta=$((spawns_after-spawns_before)); expected 3 PASS samples)" >&2
+    sed 's/^/      /' "$WORK/stochastic.log" | tail -20
+    ok=0
+  fi
+else
+  echo "  7j: FAIL (exit=$stochastic_rc; no run ID)" >&2
+  sed 's/^/      /' "$WORK/stochastic.log" | tail -20
   ok=0
 fi
 

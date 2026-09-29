@@ -24,6 +24,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Ensure jq is available
         run: |
           if command -v jq >/dev/null 2>&1; then
@@ -39,16 +49,33 @@ jobs:
             exit 1
           fi
 
+      - name: Install Python YAML dependency
+        run: python -m pip install pyyaml
+
       - name: Show tool versions
         run: |
-          bash --version
+          bash --version | head -1
           jq --version
           python3 --version
+          node --version
 
       - name: Run eval-harness shell tests
         run: |
-          set -euo pipefail
+          set +e
+          fail=0
           for t in scripts/eval/tests/*.sh; do
-            echo "== $(basename "$t")"
-            bash "$t"
+            name="$(basename "$t" .sh)"
+            if bash "$t"; then
+              echo "PASS $name"
+            else
+              echo "FAIL $name"
+              fail=1
+            fi
           done
+          exit "$fail"
+
+      - name: Meta-eval (offline harness validity)
+        run: bash scripts/eval/metaeval.sh
+
+      - name: Validate Mermaid in maintained docs
+        run: node scripts/validate-mermaid.mjs README.md docs/ECC_RESEARCH.md docs/EVAL_HARNESS_V2.md docs/JANUS_BENCHMARK.md
