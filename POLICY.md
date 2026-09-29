@@ -1,6 +1,6 @@
 # Versioning & Deprecation Policy
 
-**Applies to:** `@nano-step/eval-harness` — current working-tree version: **v0.5.0 (unreleased)**
+**Applies to:** `@nano-step/eval-harness` — current version: **v0.5.0**
 
 This document defines what constitutes a breaking change, how deprecation works,
 and what schema compatibility guarantees consumers can rely on.

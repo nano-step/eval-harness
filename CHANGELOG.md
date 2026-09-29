@@ -4,7 +4,7 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] — Unreleased
+## [0.5.0] — 2026-09-30
 
 ### Added
 - Typed case evaluation: capability, regression, and product; required/optional checks; explicit PASS, FAIL, ERROR, NEEDS_REVIEW, and INDETERMINATE run states.
