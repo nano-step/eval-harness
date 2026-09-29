@@ -22,6 +22,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 export OPENCODE_SKILLS_ROOT="$WORK/skills"
 export EVAL_STATE_DIR="$WORK/state"
+export EVAL_SKIP_AUTH_CHECK=1 # Fixture runners are local stubs; no provider credential is needed.
 export EVAL_BUDGET_USD="" # fake model writes no token-usage metadata
 mkdir -p "$OPENCODE_SKILLS_ROOT" "$EVAL_STATE_DIR/runs"
 
