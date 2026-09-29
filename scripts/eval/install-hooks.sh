@@ -32,6 +32,11 @@ if [[ -f "$target" ]] && ! grep -q "eval-harness" "$target" 2>/dev/null; then
   echo "[eval-harness] backed up existing pre-push to: $backup"
 fi
 
-cp "$source" "$target"
+{
+  echo '#!/usr/bin/env bash'
+  echo '# eval-harness pre-push forwarding hook'
+  printf 'exec bash %q "$@"' "$source"
+  echo
+} > "$target"
 chmod +x "$target"
-echo "[eval-harness] installed pre-push hook: $target"
+echo "[eval-harness] installed pre-push hook: $target (source: $source)"

@@ -33,13 +33,13 @@ inputs:
     required: false
     default: "latest"
   eval-harness-version:
-    description: "@nano-step/eval-harness version to install (default: latest)."
+    description: "Git tag to install (default: latest from main; accepts 0.5.0 or v0.5.0)."
     required: false
     default: "latest"
 
 outputs:
   verdict:
-    description: "PASS | REGRESSION | FLAKY | HARNESS_ERROR"
+    description: "PASS | REGRESSION | FAIL | NEEDS_REVIEW | INDETERMINATE | ERROR"
     value: ${{ steps.run.outputs.verdict }}
   attribution:
     description: "On regression: SKILL_CHANGED | FIXTURE_STALE | MODEL_CHANGED | UNKNOWN_DRIFT"
@@ -48,7 +48,7 @@ outputs:
     description: "Total $ cost of the eval run"
     value: ${{ steps.run.outputs.total_cost_usd }}
   report-path:
-    description: "Filesystem path to the run's diff.md"
+    description: "Filesystem path to latest child diff.md for 2-tier, otherwise the run diff.md"
     value: ${{ steps.run.outputs.report_path }}
 
 runs:
@@ -81,15 +81,18 @@ runs:
         echo "jq: $(jq --version)"
         echo "yq: $(yq --version)"
 
-    - name: Install @nano-step/eval-harness
+    - name: Install eval-harness from GitHub
       shell: bash
       run: |
         set -euo pipefail
-        if [[ "${{ inputs.eval-harness-version }}" == "latest" ]]; then
-          npm install -g @nano-step/eval-harness
+        version="${{ inputs.eval-harness-version }}"
+        if [[ "$version" == "latest" ]]; then
+          ref="main"
         else
-          npm install -g "@nano-step/eval-harness@${{ inputs.eval-harness-version }}"
+          ref="$version"
+          [[ "$ref" == v* ]] || ref="v$ref"
         fi
+        npm install -g "git+https://github.com/nano-step/eval-harness.git#$ref"
         echo "eval-harness: $(eval-harness --version 2>&1 | head -1)"
 
     - name: Install opencode CLI
@@ -193,13 +196,36 @@ runs:
 
         # Aggregate verdict + attribution + cost from the latest run dir
         LATEST_RUN_DIR=$(ls -1dt "$RUNS_DIR"/* 2>/dev/null | head -1 || echo "")
-        if [[ -n "$LATEST_RUN_DIR" && -f "$LATEST_RUN_DIR/summary.json" ]]; then
-          VERDICT=$(jq -r '.verdict // "UNKNOWN"' "$LATEST_RUN_DIR/summary.json")
-          ATTRIBUTION=$(jq -r '.attribution // ""' "$LATEST_RUN_DIR/summary.json")
-          COST=$(jq -r '.total_cost_usd // 0' "$LATEST_RUN_DIR/summary.json")
-          REPORT_PATH="$LATEST_RUN_DIR/diff.md"
+        if [[ -n "$LATEST_RUN_DIR" && -f "$LATEST_RUN_DIR/results.json" ]]; then
+          RESULTS_FILE="$LATEST_RUN_DIR/results.json"
+          VERDICT=$(jq -r '.verdict // "UNKNOWN"' "$RESULTS_FILE")
+          if [[ "$(jq -r '.mode // ""' "$RESULTS_FILE")" == "2tier" ]]; then
+            ATTRIBUTION=$(jq -r '[.full_cases[]?.attribution.top // empty] | unique | join(",")' "$RESULTS_FILE")
+            latest_child=$(jq -r '.contributing_run_ids[-1] // empty' "$RESULTS_FILE")
+            REPORT_PATH="$RUNS_DIR/$latest_child/diff.md"
+            COST=0
+            COST_COUNT=0
+            COST_KNOWN=1
+            while IFS= read -r child; do
+              [[ -z "$child" ]] && continue
+              child_file="$RUNS_DIR/$child/results.json"
+              if [[ ! -f "$child_file" ]]; then COST_KNOWN=0; continue; fi
+              if jq -e '(.summary.total_cost_usd | type) == "number"' "$child_file" >/dev/null; then
+                COST=$(jq -n --argjson total "$COST" --slurpfile run "$child_file" '$total + $run[0].summary.total_cost_usd')
+                COST_COUNT=$((COST_COUNT + 1))
+              else
+                COST_KNOWN=0
+              fi
+            done < <(jq -r '.contributing_run_ids[]?' "$RESULTS_FILE")
+            if [[ "$COST_KNOWN" != "1" || "$COST_COUNT" -eq 0 ]]; then COST="null"; fi
+          else
+            ATTRIBUTION=$(jq -r '[.cases[]?.attribution.top // empty] | unique | join(",")' "$RESULTS_FILE")
+            COST=$(jq -r 'if (.summary.total_cost_usd | type) == "number" then .summary.total_cost_usd else "null" end' "$RESULTS_FILE")
+            REPORT_PATH="$LATEST_RUN_DIR/diff.md"
+          fi
+          [[ -f "$REPORT_PATH" ]] || REPORT_PATH="$RESULTS_FILE"
         else
-          VERDICT="HARNESS_ERROR"; ATTRIBUTION=""; COST="0.00"; REPORT_PATH=""
+          VERDICT="HARNESS_ERROR"; ATTRIBUTION=""; COST="null"; REPORT_PATH=""
         fi
 
         {

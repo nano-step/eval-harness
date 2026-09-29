@@ -71,7 +71,10 @@ spawn_opencode() {
     export NANO_BRAIN_ROOT="$sandbox/nano-brain"
     export OPENCODE_EVAL_MODE=1
     export EVAL_HARNESS_RUNNING=1
-    export PATH="$workdir:$PATH"
+    if [[ -n "${EVAL_TEMPERATURE:-}" ]]; then
+      export EVAL_TEMPERATURE
+    fi
+    # A fixture executable must not shadow opencode, jq, or other host tools.
     cd "$workdir"
     run_with_timeout "$max_seconds" opencode run \
       --model "$model" \

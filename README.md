@@ -1,183 +1,134 @@
 # @nano-step/eval-harness
 
-[![npm](https://img.shields.io/npm/v/@nano-step/eval-harness?color=blue&label=npm)](https://www.npmjs.com/package/@nano-step/eval-harness)
-[![license](https://img.shields.io/github/license/nano-step/eval-harness?color=brightgreen)](./LICENSE)
-[![tests](https://img.shields.io/badge/tests-20%2F20%20green-brightgreen)](#verified-test-suites-2020-green-on-main)
-[![stars](https://img.shields.io/github/stars/nano-step/eval-harness?style=social)](https://github.com/nano-step/eval-harness/stargazers)
-[![discussions](https://img.shields.io/github/discussions/nano-step/eval-harness?color=blueviolet)](https://github.com/nano-step/eval-harness/discussions)
-[![issues](https://img.shields.io/github/issues/nano-step/eval-harness?color=informational)](https://github.com/nano-step/eval-harness/issues)
-[![good first issues](https://img.shields.io/github/issues/nano-step/eval-harness/good%20first%20issue?color=success)](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
-
-> **Behavior-regression testing for LLM agents.** 4-class attribution, 6-field FAIL schema, $-cost gating, flaky detection. Bash + jq. Works with [opencode](https://github.com/sst/opencode) today, runner-pluggable.
-
-<p align="center">
-  <img src="./docs/assets/demo.gif" alt="eval-harness detecting a regression on git push, attributing it to SKILL_CHANGED, and rendering the 6-field FAIL with a fix_proposal." width="900">
-</p>
-
-> _The GIF above is built from [`docs/assets/demo.tape`](./docs/assets/demo.tape) with [Charm vhs](https://github.com/charmbracelet/vhs). If it's missing, run `vhs docs/assets/demo.tape`._
-
-### Learn more
-
-- [**Concepts**](./docs/concepts.md) — the 4 ideas that distinguish eval-harness (6-field FAIL, 4-class attribution, 3-sample stability, $-cost gating).
-- [**Comparison**](./docs/comparison.md) — eval-harness vs promptfoo, DeepEval, Ragas, OpenAI Evals.
-- [**Why not promptfoo?**](./docs/why-not-promptfoo.md) — direct head-to-head, when to use both.
-- [**Runners**](./docs/runners.md) — runner abstraction + path to LangGraph / Claude Agent SDK / your own framework.
-
-**v0.4.2** — Behavior-regression eval harness for [opencode](https://github.com/sst/opencode) skills.
-> v0.4.2 closes all 8 BLOCKERs surfaced by independent audits: `EVAL_BYPASS` works, `score_shell` is sandboxed, fixture path-traversal blocked, `attribute.sh` portable across grep flavors, `fix_proposal` renders in `diff.md`, `--mode=2tier` aggregates verdicts correctly, empty/timed-out transcripts surface as harness errors rather than vacuous PASS.
-
-> **Scope statement.** eval-harness measures **behavior regression** for LLM agents. Today it ships with one runner (opencode skills) and covers structured-output skills (5 deterministic check kinds) AND prose-output skills (1 LLM-judge check kind, optional). It is NOT a skill design reviewer, NOT a quality grader, NOT a general-purpose evaluator. Skill design review (frontmatter shape, trigger collisions, OWASP greps, bundle size) is a separate concern, deferred to a future `skill-reviewer` tool. Other runners (LangGraph, Claude Agent SDK) are on the v0.8.0+ roadmap — see [`docs/runners.md`](./docs/runners.md).
+**v0.5.0** — typed evaluation harness for [OpenCode](https://github.com/sst/opencode) skills.
+> Adds capability, behavior-regression, and product-quality evaluation; versioned grading manifests; deterministic metric, trajectory, and human-review graders; explicit PASS / FAIL / ERROR / NEEDS_REVIEW / INDETERMINATE outcomes; and provenance-aware reports.
+> **Scope.** eval-harness evaluates declared behavior and product measurements. It does not review skill design, invent missing measurements, or collapse product dimensions into a single score. `run` remains the OpenCode execution adapter; `grade` evaluates content-addressed artifacts from any runner.
 
 ## What it does
 
-Given a baselined opencode skill, eval-harness detects when behavior has regressed since the baseline, attributes the cause, and tells you exactly what changed.
+Each case declares an `eval_type`: `capability`, `regression`, or `product`. Required checks gate the typed result; product dimensions remain separate, independently reported measurements. Use `run` to execute an OpenCode skill, or `grade --manifest=...` to score content-addressed artifacts without starting a model.
 
 ```
-$ git push origin main
-[eval-harness] pre-push: detected change in .opencode/skills/omo-session-distiller/**
-[eval-harness] running 3 cases (skills-only scope, smoke tier)
-[eval-harness] Case 1/3 atom-shape-basic                       PASS (3.9s, $0.0012)
-[eval-harness] Case 2/3 atom-tags-decision-architecture        FAIL
-[eval-harness] Case 3/3 atom-redaction-pii                     PASS (3.1s, $0.0009)
-[eval-harness] Stability check: 3 samples byte-identical → real FAIL
-[eval-harness] FAIL 1/3 — see runs/2026-05-30T11-42-08/diff.md
-[eval-harness] fix_proposal: missing tag "architecture" in $.atoms[].tags[]
-[eval-harness] WARN-ONLY MODE: push proceeding. Promote with `eval-harness promote`.
+Illustrative output; not a measured run transcript:
+$ eval-harness run --skill=example-skill
+[eval-harness] Case 1/2 capability-shape PASS
+[eval-harness] Case 2/2 regression-contract FAIL
+[eval-harness] REGRESSION (1/2) — regressions: regression-contract
+[eval-harness] WARN-ONLY MODE: regression recorded; use --strict or promote to block.
 ```
 
 ## Install
 
-```bash
-npm install -g @nano-step/eval-harness
-```
-
-Or use directly from a clone:
+This release is distributed from GitHub; the npm registry package is not published. To install the checked-out source package and expose its CLI:
 
 ```bash
 git clone https://github.com/nano-step/eval-harness.git
-export PATH="$PWD/eval-harness/scripts/eval:$PATH"
+cd eval-harness
+npm link
 ```
 
-## Quick start (5 min)
+Running npm link creates a local symlink to this checkout; it does not publish or download a registry package. Node.js 18+ is required.
+
+## Quick start
 
 ```bash
-# 1. Run the canonical demo (mutates omo-session-distiller, runs eval, reverts)
+# Run the local shell test suite (offline fixtures and stubbed runners)
 npm test
+eval-harness --version
 
-# 2. Use it on a real skill — first baseline
-eval-harness baseline --skill omo-session-distiller
+# Point at a directory containing <skill-name>/evals/cases/*.yaml.
+export OPENCODE_SKILLS_ROOT="/path/to/skills-root"
 
-# 3. Edit the skill, then run again
-eval-harness run --skill omo-session-distiller
-# → exit 12 if regression detected (only when promoted)
+# After installing OpenCode and adding evals for your skill:
+eval-harness run --skill=my-skill --dry-run
+eval-harness run --skill=my-skill
+
+# Record a passing baseline, then enforce the declared gates on later runs.
+eval-harness baseline --skill=my-skill
+eval-harness run --skill=my-skill --strict
 ```
 
-For prose-output skills (requires `ANTHROPIC_API_KEY`):
 
-```bash
-eval-harness run --skill pr-code-reviewer --mode=full   # uses LLM judge with 3-sample majority
-eval-harness run --skill pr-code-reviewer --mode=2tier  # cheap smoke first, escalate to full on FAIL
-```
+
+
+For provider-neutral grading, prepare a deterministic case/workdir/transcript and a content-addressed schema-1 grading manifest, then run eval-harness grade --manifest=grading-manifest.json --strict. Stochastic aggregate manifests are rejected because a single workdir cannot represent multiple trials. The grader never starts a model.
+
+OpenCode is the default execution adapter. For `runner: langgraph-node` cases, see the [runner contract](./docs/runners.md) and [LangGraph example](./examples/langgraph-runner/).
+
+Use `eval-harness ab --base=skill-a --candidate=skill-b --base-model=provider/model-a --candidate-model=provider/model-b --warn-cost-increase-pct=20` for a side-by-side comparison. The cost threshold warns only; case failures and unavailable evidence remain gates.
+For llm_judge prose checks, set ANTHROPIC_API_KEY and use --mode=full or --mode=2tier. Unresolved judge votes remain unavailable; they never become PASS.
+
+Optional `--report=junit:path` and `--report=sarif:path` outputs export the run as JUnit XML or SARIF 2.1.0. `eval-harness metaeval` runs a bundled stub-only corpus and writes harness-validity metrics separately from skill results.
 
 ## Architecture
 
-```
-scripts/eval/
-├── run.sh                    # entrypoint: --skill --case --mode --trigger --stability-samples --debug
-├── twotier.sh                # smoke → full escalation orchestrator
-├── baseline.sh               # writes baseline.json (explicit command)
-├── accept.sh                 # accept --case [--bless-env]
-├── status.sh                 # pull-only result inspection
-├── promote.sh                # warn-only → blocking promotion
-├── trend.sh                  # reads history.ndjson
-├── lib/
-│   ├── yq-shim.sh + _yq.py   # python-backed yq fallback (no yq binary required)
-│   ├── skills_root.sh        # OPENCODE_SKILLS_ROOT resolution (env > walk-up > user-global)
-│   ├── config.sh             # project-config layer (.opencode/eval-harness.yaml)
-│   ├── registry.sh           # per-repo opt-in + `enable-workspace` bulk-register
-│   ├── preflight.sh          # opencode binary + API key probe (fail-fast)
-│   ├── lock.sh               # flock(1) coordinator (mkdir fallback for macOS)
-│   ├── spawn.sh              # invokes `opencode run` with sandboxed env
-│   ├── manifest.sh           # env-manifest capture (sha + model + version + platform)
-│   ├── score.sh              # runs all 6 check kinds against transcript + fs
-│   ├── llm_judge.sh          # Anthropic API call, 3-sample majority voting
-│   ├── autofix.sh            # heuristic fix_proposal enrichment
-│   ├── pricing.sh            # token → dollar conversion + staleness gate
-│   ├── stability.sh          # 3-sample byte-identical check on FAIL
-│   ├── diff.sh               # 6-field FAIL output + per-case cost + stability
-│   └── attribute.sh          # 4-class attribution decision tree
-├── hooks/
-│   ├── pre-push              # git hook installer target
-│   ├── sync-publish.sh       # sync-skill-to-manager pre-publish hook
-│   ├── opencode-stop.sh      # scaffold (gated on opencode ≥ 1.16 plugin API)
-│   └── HOOKS.md              # hook reference
-└── tests/                    # 11 test suites — see "Verify" section
-```
+- scripts/eval/run.sh — OpenCode execution adapter and run lifecycle
+- scripts/eval/grade.sh — provider-neutral grading from a versioned evidence manifest
+- scripts/eval/ab.sh — typed A/B comparison with optional per-side model overrides
+- scripts/eval/lib/safe_shell.py — constrained argv runner for implicit-safe shell checks
+- scripts/eval/lib/extended_graders.sh — metric, trajectory, and human-review graders
+- scripts/eval/lib/grading_manifest.sh — content-addressed case, workdir, transcript, and artifact manifest
+- scripts/eval/lib/manifest.sh — environment and prompt/rubric/tool fingerprints (schema 4)
+- scripts/eval/lib/diff.sh — typed case/run results, resource coverage, and Markdown report
+- scripts/eval/lib/attribute.sh — evidence classification; never causal proof
+- scripts/eval/lib/stats.sh — stochastic reliability estimates and Wilson intervals
+- scripts/eval/lib/budget.sh — daily budget ledger; unknown costs remain unknown
+- scripts/eval/lib/report_junit.sh and report_sarif.sh — optional JUnit XML and SARIF exports
+- scripts/eval/metaeval.sh — offline harness false-positive, false-negative, and attribution metrics
+- scripts/eval/tests/ — deterministic regression and dogfood suites
 
-## Design highlights
+## Case types and result states
 
-- **Bash + jq + flock**. No daemon, no Node CLI, no Unix socket. Python only as a `yq` fallback.
-- **3 active triggers + 1 scaffold**: `sync-skill-to-manager` pre-publish · git `pre-push` on skill edits · manual `eval-harness run` · opencode Stop hook (scaffolded; activates on opencode ≥ 1.16).
-- **6-field FAIL schema**: `failed_check_id`, `expected`, `actual`, `diff_hint`, `transcript_span`, `env_delta`.
-- **4-class attribution**: `SKILL_CHANGED`, `FIXTURE_STALE`, `MODEL_CHANGED`, `UNKNOWN_DRIFT`. Tagged `flaky:true` when 3-sample stability check finds samples diverged.
-- **2-tier execution mode**: `--mode=smoke` (cheap haiku, 1 LLM-judge sample) by default. `--mode=full` (configured model, 3 samples). `--mode=2tier` runs smoke, re-runs only failed cases with full.
-- **Dollar cost per case**: `pricing.json` curated rates for haiku-3-5, sonnet-4-6, opus-4-7. `summary.total_cost_usd` per run. Staleness gate (default 60 days).
-- **Per-(case,trigger) lockfile**: `flock(1)` serializes concurrent invocations on the same skill+case+trigger.
-- **Per-repo opt-in registry** + **bulk register**: required for multi-repo workspaces. Manual trigger always runs; automated triggers (pre-push / sync-publish / stop-hook) skip non-enabled repos. One command opts every skill-bearing repo in: `registry.sh enable-workspace --root=<path>`.
-- **Project-config layer**: `.opencode/eval-harness.yaml` walked up from cwd. Env vars win when explicitly set.
-- **Per-case model override**: case YAML `.model` field. Resolution: case > env > project config > built-in.
-- **3-sample byte-identical stability check** on FAIL → flaky tag if mismatch, no false attribution.
-- **Warn-only by default**. Promote with `eval-harness promote` (manual). Auto-promotion after N green days is a v0.6.0 item, not shipped yet.
-- **Two-stage `accept`**: default updates fixtures only; `--bless-env` required to update env-manifest (with confirmation).
-- **Heuristic auto-fix proposals**: every FAILED check on a safe kind carries a `.fix_proposal` with `instruction` + `patch_snippet`. Rendered in `diff.md`. Never auto-applies — proposes only (applier is v0.5.0).
-- **Cost ceiling**: `EVAL_BUDGET_USD=2.00` hard daily cap. Tokens-based capture.
-- **One-command rerun** in every FAIL output.
+Each case has an eval_type:
 
----
+| Type | Purpose | Baseline behavior |
+|---|---|---|
+| regression (default) | Preserve an existing behavior contract | Baseline comparison enabled |
+| capability | Verify declared capabilities | No baseline comparison unless explicitly enabled |
+| product | Report independent product-quality dimensions | No baseline comparison unless explicitly enabled |
 
-## What this harness scores (the factors)
+The top-level result retains the legacy passed boolean and adds status: PASS, FAIL, ERROR, NEEDS_REVIEW, or INDETERMINATE. A regression is specifically a case that compared against a baseline with passed=true and now has status=FAIL. Missing required evidence is not a pass or a measured zero.
 
-Be explicit about what is and isn't checked. eval-harness evaluates **two layers** with different jobs:
+## Supported check kinds
 
-### Layer 1 — Behavior factors (eval-harness itself, this repo, this version)
-
-Every case in `.opencode/skills/<skill>/evals/cases/*.yaml` declares one or more **checks**. The harness runs **all checks** per case and aggregates failures. **6 check kinds** are supported today:
-
-| # | Check kind | What it scores | Reliability |
-|---|---|---|---|
-| 1 | `shell`               | Runs a shell command in the case workdir; matches stdout against `expect_regex` / `expect_min` / `expect_exact` / `expect_exact_lines`. | High — deterministic. |
-| 2 | `jq_path_contains`    | Reads a JSON file in workdir, walks a jq path, asserts the result array contains all `contains:` values. | High — deterministic. |
-| 3 | `file_exists`         | Asserts a file exists at the given path in workdir. | High — deterministic. |
-| 4 | `output_contains`     | Greps the opencode transcript for a literal string. Records `transcript_span` on hit. | High — deterministic, literal-only. |
-| 5 | `output_not_contains` | Inverse of #4. Used for refusal / forbidden-output checks. | High — deterministic, literal-only. |
-| 6 | `llm_judge`           | Calls Anthropic Messages API (default `claude-sonnet-4-6`, configurable to `claude-opus-4-7`) with a rubric. 3-sample majority voting. **Returns `verdict: null` honestly** when API key missing, response unparseable, or majority null — never fabricates a verdict. | Medium — model-judged, with explicit failure modes. |
-
-If your case YAML uses an unrecognised `kind:`, the harness emits an `error: true` result and excludes it from regression diff — it does not silently pass.
-
-### Layer 2 — Environment & attribution factors (for FAIL diagnosis)
-
-When a case fails, the harness attributes the cause using environment-manifest fields captured per run:
-
-| Manifest field | Catches |
+| Kind | Evidence and gate |
 |---|---|
-| `skill_bundle_sha` (transitive hash of all skills) | `SKILL_CHANGED` |
-| `skill_sha` (just this skill) | `SKILL_CHANGED` (narrower) |
-| `fixture_sha` (case fixture directory) | `FIXTURE_STALE` |
-| `model_id` + `opencode_version` | `MODEL_CHANGED` |
-| (none of the above changed) | `UNKNOWN_DRIFT` |
-| 3-sample stability divergence | `flaky: true` tag on attribution |
+| shell | Safe command output matched against expect_regex, expect_min, expect_exact, or ordered expect_exact_lines |
+| jq_path_contains | JSON value contains the declared required items |
+| file_exists | Declared workdir file exists |
+| output_contains | Literal transcript match; unavailable transcript -> INDETERMINATE |
+| output_not_contains | Literal absence check; unavailable transcript -> INDETERMINATE |
+| llm_judge | Optional model grader; abstentions remain unavailable, never synthetic PASS |
+| metric_score | Numeric JSON metric in [0,1], with optional minimum and named dimension |
+| trajectory | Ordered JSONL events with declared tool/skill/retry/verification/repair constraints |
+| human_review | Content-addressed review sidecar; missing or pending review -> NEEDS_REVIEW |
 
-`MCP_FLAKE` and `HARNESS_BUG` are designed but not shipped (deferred until they bite).
+Unknown kinds, malformed case configuration, no checks, or no required checks produce ERROR. Optional checks report evidence but do not gate. For each named product dimension, numeric check scores use the declared positive weights; missing values make that dimension unavailable. The harness does not emit a single weighted product score.
 
-### Layer 3 — Skill *design* factors (NOT in this repo)
+## Reliability and resources
 
-A separate concern, deferred to a future `skill-reviewer` tool. eval-harness does **not** review skill design quality (trigger phrase collisions, frontmatter shape, examples present, security greps, bundle size, etc.).
+Stochastic cases report pass@k = 1-(1-p)^k and pass^k = p^k using repeated attempts of the same case/configuration, plus Wilson confidence bounds. Attempts are not pooled across heterogeneous cases; stability reruns are diagnostic, not independent samples. IID is an explicit assumption, not a measured property. See the v2 design (docs/EVAL_HARNESS_V2.md).
 
-A draft heuristic for design review lives at [`standards/skill-quality-v1.md`](./standards/skill-quality-v1.md). Read it understanding that:
+Tokens, cost, and duration each carry measured/partial/unavailable coverage. Total cost is null unless every case has measured cost; the measured subtotal remains separately labeled. If EVAL_BUDGET_USD is set, an unmeasured ledger entry blocks later budget-gated runs until reconciled; it is never recorded as $0.
 
-- **13 of 30 factors** are grounded in real sources (Anthropic Skills doc + OWASP shell-security greps + MCP tool conventions). Reliable to apply.
-- **17 of 30 factors** are heuristic synthesis from pattern-matching across one workspace. Use with judgment; treat as "things to consider," not "things that pass/fail."
-- There is **no published, authoritative skill-quality benchmark** in the industry today. Anyone claiming one is synthesising — same as we are. This doc is honest about which factors are grounded vs invented.
+## Provenance and baseline compatibility
+
+Environment manifests use schema 4 and bind the SUT skill, bundle, fixture, prompt, rubric, and optional tool manifest hashes plus model/runtime/platform. Older environment baselines remain readable; newly introduced hashes are ignored when absent from a legacy baseline. Attribution classes include SKILL_CHANGED, CROSS_SKILL_CHANGE, FIXTURE_STALE, MODEL_CHANGED, PROMPT_CHANGED, RUBRIC_CHANGED, TOOL_MANIFEST_CHANGED, ENVIRONMENT_CHANGED, EVIDENCE_AVAILABILITY_CHANGED, NON_DETERMINISTIC_DRIFT, NO_BASELINE, and UNKNOWN_DRIFT. Cross-skill hashes are co-occurrence evidence, not proof of causality.
+
+Baseline records use schema 3 and retain `source_run_id`, the content-addressed grading-manifest reference, and existing checksum verification; schema-2 records remain readable. Baseline and acceptance commands bind writes to the run they executed or explicitly selected; initial baselines and accept require a verified PASS. Rebaseline refuses unavailable evidence and only accepts failing behavior with the explicit --accept-model-change override.
+
+## Provider-neutral grading
+
+Run `eval-harness grade --manifest=grading-manifest.json` to grade without invoking a model. Manifest schema 1 binds the case file, workdir tree, transcript, selected artifacts, environment manifest, run/case IDs, and provenance with content digests. Paths must resolve inside the manifest root. `--strict` exits 14 for FAIL, 15 for NEEDS_REVIEW, 16 for INDETERMINATE, and 13 for malformed or tampered evidence. The manifest format is generic JSON; this release does not load arbitrary evaluator plugins. The Janus 0.1.10 eval-feature benchmark found no candidate executor invocation and a PASS for empty checks; see [JANUS_BENCHMARK.md](./docs/JANUS_BENCHMARK.md).
+
+## Other gates and deferred scope
+
+A/B comparison can override the base/candidate model independently and reports dimensions, token/cost/duration deltas without collapsing dimensions. Its optional cost-increase percentage is warning-only. Ordinary promotion requires a green daily-stats record for every day in the configured seven-day window (and no bypasses); --force is the explicit override. Auto-promotion uses the same readiness check.
+
+The pre-push hook supports optional include/exclude branch globs in .opencode/eval-harness.yaml under pre_push.branches; include matches take precedence if both lists are set.
+
+This project evaluates declared behavior and measurements. It does not audit skill design quality, perform visual reconstruction review, or prove that a changed manifest field caused an outcome. The separate draft skill-design rubric is at standards/skill-quality-v1.md. Research and the full migration/API contract are in docs/ECC_RESEARCH.md and docs/EVAL_HARNESS_V2.md.
+
 
 ---
 
@@ -195,9 +146,9 @@ flowchart TD
   D -- no  --> Z[skip, push proceeds]
   D -- yes --> E[Detect affected skill from changed files]
   E --> F[Acquire flock on skill:case:trigger]
-  F --> G[Sandbox each case: ephemeral HOME/OPENCODE_CONFIG_DIR/cwd]
+  F --> G["Isolate each case HOME/config/workdir; no OS sandbox"]
   G --> H[Spawn opencode run with skills_loaded pinned]
-  H --> I[Run ALL 6-kind checks per case]
+  H --> I[Run all configured grader kinds per case]
   I --> J{Any case FAIL?}
   J -- no --> K[exit 0, push proceeds]
   J -- yes --> L[3-sample stability check]
@@ -208,9 +159,9 @@ flowchart TD
   O -- yes --> Q[exit 12, push BLOCKED unless EVAL_BYPASS=1]
 ```
 
-**Factors enforced**: Layer 1 (6 check kinds) + Layer 2 (4 attribution fields + flaky tag). Plus dollar-cost accounting + auto-fix proposals.
+**Factors enforced**: configured grader kinds + typed attribution fields + flaky tag, plus cost accounting and auto-fix proposals.
 
-### Workflow B — Pre-publish (opt-in, before npm publish)
+### Workflow B — Pre-publish skill-manager gate (opt-in)
 
 ```mermaid
 flowchart TD
@@ -248,56 +199,18 @@ This table is the **honest scope statement**. Anything not in Workflow A/B (or a
 
 ---
 
-## How to verify the harness is actually running these factors
+## Verify the harness
 
-Four reproducible commands, each scoped to a different layer:
+The package test command runs scripts/eval/test.sh, which discovers and executes every shell suite under scripts/eval/tests. These tests use local fixtures and stubbed runners; they do not measure live model quality, latency, or cost.
 
 ```bash
-# Layer 1 + Layer 2 — full pipeline including attribution
 npm test
-# → runs scripts/eval/tests/regression_inject.sh
-# → asserts: verdict=REGRESSION, attribution=SKILL_CHANGED, 6-field FAIL populated
-# → exit 0 = harness is real
-
-# Layer 1 — dry-run case discovery only (no API spend; preflight still runs)
-EVAL_SKIP_AUTH_CHECK=1 eval-harness run --skill=<your-skill> --dry-run
-
-# Layer 1 — single check kind in isolation
-bash scripts/eval/lib/score.sh check <one-check.yaml> <workdir> <transcript>
-
-# Full test suite — 21 suites covering every primitive
-for t in scripts/eval/tests/*.sh; do bash "$t"; done
-# → all should print PASS
+eval-harness --version
+eval-harness run --skill=my-skill --dry-run
 ```
 
-If you need to know whether a specific factor is being checked, point at the case YAML — `.checks[]` is the complete list of factors that case enforces. There is no hidden scoring.
+The skill must exist under OPENCODE_SKILLS_ROOT and contain evals/cases/*.yaml. The dry run checks discovery and preflight without spawning an evaluation run. For a specific gate, inspect the selected case YAML; its checks array is the complete list of enforced graders.
 
-### Verified test suites (21/21 green on `main`)
-
-| Suite | Covers |
-|---|---|
-| `regression_inject.sh`        | End-to-end demo: inject regression, assert SKILL_CHANGED + 6-field FAIL |
-| `case_model_override.sh`      | Per-case `.model` field flows into env-manifest |
-| `project_config.sh`           | `.opencode/eval-harness.yaml` + env-var precedence |
-| `registry.sh`                 | init / enable / disable / list / is-enabled / repo-name |
-| `registry_bulk.sh`            | `enable-workspace` discover (all/skills/cases), dry-run, single-write merge, idempotency, preserves manual entries |
-| `lock_concurrency.sh`         | Two parallel same-case runs serialized via flock |
-| `pricing.sh`                  | Cost math + staleness states (FRESH/STALE/MISSING) + token extraction |
-| `stability_inline.sh`         | 3-sample byte-identical hashing on FAIL |
-| `stop_hook.sh`                | Version gate + empty changed-set handling |
-| `llm_judge_unit.sh`           | PASS / FAIL / ERROR paths + 3-sample majority + missing-key fallback |
-| `twotier_mode.sh`             | Smoke pins haiku, full pins sonnet-4-6, 2tier orchestrates, invalid mode rejected |
-| `twotier_aggregation.sh`      | 2tier escalation aggregates verdicts across all failed cases (closes BLK-6) |
-| `autofix.sh`                  | Fix proposals for safe check kinds; null for llm_judge & passing checks |
-| `fix_proposal_render.sh`      | `fix_proposal` renders in `diff.md` (closes BLK-5) |
-| `bypass.sh`                   | `EVAL_BYPASS=1` exits 0 + writes bypass event (closes BLK-1) |
-| `shell_safety.sh`             | `score_shell` filter accepts jq/pipes/wc; rejects rm/curl/`$()`/backtick/`>`; honors `unsafe_shell:` opt-in (closes BLK-2) |
-| `shell_no_expectation.sh`     | `score_shell` treats missing `expect_*` fields as harness errors, not ordinary FAILs |
-| `shell_exact_lines.sh`        | `score_shell` compares ordered output lines, ignoring trailing whitespace and blank trailing lines |
-| `fixture_path_traversal.sh`   | Fixture copy rejects absolute paths + `..` segments (closes BLK-3) |
-| `attribution_portable.sh`     | Attribution works under GNU + BSD grep (closes BLK-4) |
-| `transcript_empty_guard.sh`   | Missing/empty transcript → harness error not vacuous PASS (closes BLK-7) |
-| `spawn_timeout_guard.sh`      | `timeout(1)` exit 124 → harness error not silent partial-transcript score (closes BLK-8) |
 
 ## Triggers
 
@@ -352,30 +265,24 @@ Bulk-register is **idempotent**: re-running with the same args adds zero new ent
 
 Default registry path: `~/.config/opencode/eval-harness/registry.yaml`. Override with `$EVAL_HARNESS_REGISTRY`.
 
-### Wiring the pre-push hook everywhere
+### Wiring the pre-push hook
 
-Git hooks live inside each repo's `.git/hooks/`. To get the eval-harness pre-push hook on **every** repo on the machine without per-repo install, use git's `core.hooksPath`:
-
-```bash
-# 1. Make a global hooks directory
-mkdir -p ~/.config/git/hooks
-
-# 2. Drop the eval-harness pre-push hook in
-cp $(npm root -g)/@nano-step/eval-harness/scripts/eval/hooks/pre-push ~/.config/git/hooks/
-chmod +x ~/.config/git/hooks/pre-push
-
-# 3. Tell git to use it globally
-git config --global core.hooksPath ~/.config/git/hooks
-```
-
-Now every `git push` on this machine fires the hook. The hook only invokes `eval-harness` when the push touches `.opencode/skills/<X>/` files **and** the repo is opted in via the registry. All other pushes return immediately with no overhead.
-
-Per-repo install (alternative) for a single repo:
+Keep the harness checkout at a stable absolute path so the hook can load its sibling libraries. For every repository on this machine:
 
 ```bash
-cd /path/to/your/repo
-bash $(npm root -g)/@nano-step/eval-harness/scripts/eval/install-hooks.sh
+export EVAL_HARNESS_HOME="$HOME/src/eval-harness"
+git config --global core.hooksPath "$EVAL_HARNESS_HOME/scripts/eval/hooks"
 ```
+
+For one repository only:
+
+```bash
+git -C /path/to/your/repo config core.hooksPath "$EVAL_HARNESS_HOME/scripts/eval/hooks"
+```
+
+The shared hook path keeps the pre-push script beside the harness libraries; do not copy the script into a standalone hooks directory. The hook only invokes eval-harness when the push touches a skill and the repository is enabled in the registry. Configuring core.hooksPath replaces Git's default hook directory for the selected scope.
+
+
 
 ### Pricing data
 
@@ -383,14 +290,16 @@ bash $(npm root -g)/@nano-step/eval-harness/scripts/eval/install-hooks.sh
 
 ## Limitations (read before using)
 
-1. **opencode 1.15.10 verified.** opencode ≥ 1.16 needed to activate the Stop hook; earlier versions: file an issue.
-2. **No `--max-turns` / `--skills` flags exist in opencode** → enforced via filesystem (ephemeral `OPENCODE_CONFIG_DIR` + external `timeout(1)` + token-counted kill).
-3. **No real network calls** in default mode. `--realenv` flag for opt-in quarantined cases.
-4. **LLM judge requires `ANTHROPIC_API_KEY`.** Without one, `llm_judge` checks return `verdict: null` with `reason: judge_unavailable` — this is by design (we never fabricate a verdict). Set the key to use prose-output evaluation.
-5. **Deterministic mode only** (T=0, k=1). Stochastic `pass@k` deferred to v0.7.0.
-6. **Auto-fix proposes, never applies.** Each FAILED check carries a `fix_proposal` (visible in `diff.md`) but `auto_apply: false`. An `eval-harness apply` command is tracked in v0.5.0.
-7. **Cost is captured, not gated.** Per-case + per-run dollar amounts surface in `results.json` and `diff.md`, but only `EVAL_BUDGET_USD` (daily token cap, per-process) hard-stops execution. Shared-state budget ledger + cost-regression gating are tracked in v0.5.0.
-8. **No `--strict` mode yet.** Warn-only is the only mode in v0.4.x. CI-grade gating requires `eval-harness promote` (manual) or waiting for v0.5.0's `--strict` flag (issue #10).
+1. The run command is an OpenCode adapter. The provider-neutral grade command accepts prepared evidence but does not load arbitrary plugins.
+2. The Stop hook remains gated on the OpenCode plugin API version documented in scripts/eval/hooks/HOOKS.md; manual and pre-push runs are independent.
+3. llm_judge requires ANTHROPIC_API_KEY. Missing credentials, malformed responses, and unresolved votes remain unavailable/indeterminate; they never become synthetic PASS.
+4. Stochastic confidence estimates assume repeated attempts of one case/configuration are IID. That assumption is declared, not empirically validated. Stability reruns are diagnostic only.
+5. metric_score accepts one JSON number in [0,1] per check. Dimensions are reported separately; no cross-dimension global product score is computed.
+6. human_review consumes a versioned sidecar record. There is no review queue, assignment service, or UI.
+7. Token/cost measurements require usage metadata and known pricing. Missing values are unavailable/null, not zero. With EVAL_BUDGET_USD enabled, unknown ledger spend blocks later runs until reconciled.
+8. A/B cost-increase thresholds warn only. They do not gate. Use typed case outcomes or explicit required metric checks for blocking behavior.
+9. Attribution classifies changed hashes and runtime fields. Hash co-occurrence is not proof of causality.
+10. Implicit-safe shell checks accept only a constrained jq/printf/wc -l expression and confine jq files to the workdir; other commands require unsafe_shell: true. That opt-in executes with the harness user's permissions. The workdir is not an OS sandbox, so only run trusted case YAML.
 
 ## Authoring a case (5 min)
 
@@ -399,6 +308,7 @@ Structured-output case (deterministic, no API cost beyond the spawn):
 ```yaml
 schema_version: 2
 id: smoke-001-my-case
+eval_type: regression
 mode: deterministic
 skill_under_test: omo-session-distiller
 skills_loaded: [omo-session-distiller]
@@ -424,12 +334,36 @@ checks:
     contains: ["decision", "architecture"]
 ```
 
-Prose-output case (uses `llm_judge`, needs `ANTHROPIC_API_KEY`):
+Product-quality case (deterministic metrics; dimensions stay separate):
 
 ```yaml
 schema_version: 2
+id: geometry-product-check
+eval_type: product
+compare_to_baseline: false
+prompt: "Write product-metrics.json with geometry and appearance scores in [0,1]."
+checks:
+  - kind: metric_score
+    file: product-metrics.json
+    path: "$.geometry.topology_score"
+    minimum: 0.9
+    dimension: geometry
+  - kind: metric_score
+    file: product-metrics.json
+    path: "$.appearance.score"
+    minimum: 0.8
+    dimension: appearance
+```
+
+A missing required metric artifact is INDETERMINATE, not a numeric score of zero or a passing fallback.
+
+
+Prose-output regression case (uses llm_judge; requires ANTHROPIC_API_KEY):
+```yaml
+schema_version: 2
 id: review-must-flag-sql-injection
-mode: prose
+eval_type: regression
+mode: deterministic
 skill_under_test: pr-code-reviewer
 skills_loaded: [pr-code-reviewer]
 model: anthropic/claude-sonnet-4-6   # optional per-case override
@@ -457,99 +391,27 @@ Run `eval-harness run --skill=pr-code-reviewer --mode=2tier` to evaluate cheaply
 
 ## Versions
 
-| Version | Released | Highlights |
+| Version | Status | Highlights |
 |---|---|---|
-| **v0.4.2** | 2026-05-30 | Hardening: closed all 8 audit BLOCKERs — bypass crash, score_shell RCE, fixture traversal, macOS attribution, fix_proposal rendering, 2tier aggregation, empty transcripts, timeout handling |
-| v0.4.1 | 2026-05-30 | Fix npm-link symlink resolution in entrypoint scripts |
-| v0.4.0 | 2026-05-29 | Heuristic auto-fix proposer for safe check kinds |
-| v0.3.0 | 2026-05-29 | LLM judge (sonnet-4-6 / opus-4-7, 3-sample majority) · `pr-code-reviewer` demo · 2-tier mode |
-| v0.2.0 | 2026-05-29 | Project config · per-case model override · per-repo registry · flock lockfile · pricing/cost · stability on critical path · Stop-hook scaffold |
-| v0.1.1 | 2026-05-29 | Patch: model ID + demo path + factors README + SQS-1 honesty |
-| v0.1.0 | 2026-05-28 | Initial release: bash + pre-push + sync-publish + 4-class attribution + omo-session-distiller demo |
+| 0.5.0 | Unreleased working-tree implementation | Typed eval types and statuses; metric/trajectory/human graders; provider-neutral content-addressed grading manifests; schema-4 provenance; pass@k/pass^k; typed resources; fail-closed baseline, budget, A/B, and promotion gates. |
+| 0.4.2 | 2026-05-30 | Audit hardening: shell safety, fixture traversal, attribution portability, timeout/empty-transcript handling, 2-tier aggregation. |
+| 0.4.1 | 2026-05-30 | npm-link symlink resolution in entrypoint scripts. |
+| 0.4.0 | 2026-05-29 | Heuristic auto-fix proposals for safe check kinds. |
+| 0.3.0 | 2026-05-29 | LLM judge, prose-output demo, and 2-tier mode. |
+| 0.2.0 | 2026-05-29 | Project config, per-case model override, registry, locks, cost reporting, stability. |
+| 0.1.1 | 2026-05-29 | Model ID and documentation corrections. |
+| 0.1.0 | 2026-05-28 | Initial Bash regression runner and 4-class attribution. |
 
-Unreleased post-v0.4.2 work on `main`:
-- `registry.sh enable-workspace` — bulk-register all skill-bearing repos under a workspace root (will ship as part of v0.4.3)
-
-See [`CHANGELOG.md`](./CHANGELOG.md) for details.
+See CHANGELOG.md for release details.
 
 ## Roadmap
 
-v0.4.2 (2026-05-30) closed all 8 BLOCKERs surfaced by independent audits. v0.4.3 work has started — bulk workspace registration shipped, 9 polish items remain.
+The complete v2 design, current capability map, migration contract, and deferred decisions are in docs/EVAL_HARNESS_V2.md. ECC comparison and source evidence are in docs/ECC_RESEARCH.md.
 
 See [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) for the remaining HIGH/MEDIUM items, [`CONTRIBUTING.md`](./CONTRIBUTING.md) for how to land a PR, and the [📍 pinned roadmap issue #26](https://github.com/nano-step/eval-harness/issues/26) for the latest priorities.
+Remaining work is intentionally evidence-driven: calibrate grader reliability with labeled data; add provider-specific evidence adapters only when they preserve the manifest contract; improve attribution only with causal evidence; and keep human review as a typed record rather than a hidden model guess. No global product score, automatic model grader, or arbitrary plugin execution is planned.
 
-**Want to help?** 26 issues are open with clear scope. [Browse `good first issue`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped) or [`help wanted`](https://github.com/nano-step/eval-harness/issues?q=is%3Aopen+label%3A%22help+wanted%22) (larger features needing design discussion).
-
-### v0.4.2 — Hardening release ✅ shipped 2026-05-30
-
-All 8 BLOCKERs closed:
-- ✅ Fixed `EVAL_BYPASS=1` crash (function-before-definition)
-- ✅ Sandboxed `score_shell`'s `bash -c "$cmd"` with metachar/dangerous-binary filter
-- ✅ Fixed fixture-copy subshell + path-traversal guard (absolute paths + `..` blocked)
-- ✅ Fixed `attribute.sh` BRE alternation (works on macOS BSD grep now)
-- ✅ Rendered `.fix_proposal` in `diff.md` (auto-fix feature finally visible)
-- ✅ Fixed `--mode=2tier` verdict aggregation across escalated cases
-- ✅ Treat empty/missing transcript as harness error, not vacuous PASS
-- ✅ Handle `timeout(1)` exit 124 as harness error
-
-### v0.4.3 — Correctness polish (in progress)
-
-- ✅ **`registry.sh enable-workspace`** — bulk-register all skill-bearing repos under a workspace root (shipped post-v0.4.2)
-- `trap` for lock fd / mkdir-lock cleanup on SIGINT/SIGTERM (issue #1)
-- Larger run-ID collision space — `$RANDOM$RANDOM` or `openssl rand` (#2)
-- Preflight `python3` + `pyyaml` presence (#3)
-- LLM-judge verdict parser: scan only first line of response (#4)
-- `flock` the `history.ndjson` append (#5)
-- Cap `samples:` field in case YAML — prevent runaway cost (#6)
-- Delete dead-code `propose_fixes_for_run` tautology bug (#7)
-- Detect 'no expectation' misconfig in shell check (#8)
-- Remove `$workdir` PATH-prepend in spawn.sh (#9)
-- macOS CI matrix (#24)
-
-### v0.5.0 — CI-ready
-
-The first version safe to recommend for CI/CD gating.
-
-- `--strict` mode — flip warn-only off; exit 12 on first regression (#10)
-- `--ci` mode + JUnit / SARIF reporter + PR-comment integration (#11)
-- Shared-state daily budget ledger — `EVAL_BUDGET_USD` actually enforced across runs (#12)
-- Self-eat suite: `skills/eval-harness/evals/cases/*.yaml` for the harness itself (#13)
-- Auto-fix **applier** — `eval-harness apply --run=<id>` (#14)
-- Cost-regression gating — block PRs that raise per-case $ vs baseline
-- Semver + deprecation policy documented (#22)
-- GitHub Actions example workflow (#23)
-- End-to-end demo script (#25)
-
-### v0.6.0 — DX polish
-
-- Pre-push branch filter — skip WIP/draft branches (#15)
-- Cross-skill behavioral interaction diagnosis (#16)
-- Automatic warn-only → blocking promotion after N green days (#17)
-- A/B mode — `eval-harness ab --base=X --candidate=Y` (#18)
-- opencode Stop-hook activation once plugin API lands
-
-### v0.7.0 — Scale
-
-- Anthropic API rate-limit handling + exponential backoff (#19)
-- Judge response caching by `(rubric_hash + artifact_hash)` (#20)
-- Stochastic `pass@k` mode — T>0, multiple samples per case (#21)
-- Per-run cost cap (`EVAL_BUDGET_USD` currently daily-only)
-- `MCP_FLAKE` + `HARNESS_BUG` attribution classes
-
-### v1.0.0 — Stable
-
-Trigger criteria (all must be true):
-
-- ✅ All BLOCKERs from 2026-05-30 audits closed (done in v0.4.2)
-- All HIGH severity items closed (target: v0.4.3)
-- Self-eaten on own evals (#13 → v0.5.0)
-- Semver + deprecation policy published (#22 → v0.5.0)
-- CI-proven on ≥1 external repo (community signal)
-- 30 days of stable releases with no critical bug reports
-
-### Out of scope (separate project)
-
-**`skill-reviewer`** — Layer-3 design review (frontmatter schema, trigger-phrase collisions, OWASP shell greps, bundle size, examples-present, deprecation references). Different tool, different repo, different release cadence. See [`standards/skill-quality-v1.md`](./standards/skill-quality-v1.md) for the draft rubric.
+Skill-design review remains a separate concern. See standards/skill-quality-v1.md for the draft rubric, POLICY.md for release rules, KNOWN_ISSUES.md for verified open defects, and CONTRIBUTING.md for repository workflows.
 
 ---
 

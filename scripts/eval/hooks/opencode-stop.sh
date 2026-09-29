@@ -49,9 +49,8 @@ main() {
   if ! require_opencode_version; then exit 0; fi
 
   local changed_skills=()
-  local changed_skill
-  while IFS= read -r changed_skill; do
-    [[ -n "$changed_skill" ]] && changed_skills+=("$changed_skill")
+  while IFS= read -r _changed_skill; do
+    [[ -n "$_changed_skill" ]] && changed_skills+=("$_changed_skill")
   done < <(discover_changed_skills)
   if [[ ${#changed_skills[@]} -eq 0 ]]; then
     echo "[opencode-stop] no skill files changed; nothing to evaluate" >&2

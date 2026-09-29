@@ -16,10 +16,11 @@ _resolve_script_dir() {
 }
 SCRIPT_DIR="$(_resolve_script_dir)"
 source "$SCRIPT_DIR/lib/manifest.sh"
+source "$SCRIPT_DIR/lib/stability.sh"
 
 usage() {
   cat <<EOF
-Usage: eval-harness baseline --skill=<name> [--case=<id>]
+Usage: eval-harness baseline --skill=<name> [--case=<id>] [--portable]
 
 Runs the case(s) once, accepts current behavior as the baseline. Use only
 when you intend to record the current output as the contract going forward.
@@ -28,12 +29,13 @@ If a baseline already exists, you must pass --force to overwrite.
 EOF
 }
 
-SKILL=""; CASE_ID=""; FORCE=0
+SKILL=""; CASE_ID=""; FORCE=0; PORTABLE=0
 for arg in "$@"; do
   case "$arg" in
     --skill=*) SKILL="${arg#*=}" ;;
     --case=*)  CASE_ID="${arg#*=}" ;;
     --force)   FORCE=1 ;;
+    --portable) PORTABLE=1 ;;
     -h|--help) usage; exit 0 ;;
     baseline)  ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
@@ -44,15 +46,26 @@ if [[ -z "$SKILL" ]]; then
   echo "error: --skill=<name> required" >&2; exit 2
 fi
 
-# Run the suite first, capture results
+# Capture this invocation's run id; never pick a concurrent process's globally newest run.
+STATE_DIR="${EVAL_STATE_DIR:-$HOME/.config/opencode/eval-harness}"
 RUN_OUT_RAW="$("$SCRIPT_DIR/run.sh" --skill="$SKILL" ${CASE_ID:+--case=$CASE_ID} --trigger=baseline 2>&1 || true)"
 echo "$RUN_OUT_RAW"
-
-LATEST_RUN_DIR="$(ls -dt "${EVAL_STATE_DIR:-$HOME/.config/opencode/eval-harness}/runs"/* 2>/dev/null | head -1)"
-if [[ -z "$LATEST_RUN_DIR" ]] || [[ ! -f "$LATEST_RUN_DIR/results.json" ]]; then
-  echo "[eval-harness] baseline: could not locate the run that just executed" >&2
+RUN_ID="$(printf '%s\n' "$RUN_OUT_RAW" | sed -n 's/^\[eval-harness\] run_id=//p' | head -1)"
+LATEST_RUN_DIR="$STATE_DIR/runs/$RUN_ID"
+if [[ -z "$RUN_ID" || ! -f "$LATEST_RUN_DIR/results.json" ]]; then
+  echo "[eval-harness] baseline: could not locate results for the run just executed" >&2
   exit 13
 fi
+run_verdict="$(jq -r '.verdict // "ERROR"' "$LATEST_RUN_DIR/results.json")"
+case "$run_verdict" in
+  PASS) ;;
+  FAIL) echo "[eval-harness] baseline requires PASS; run verdict was FAIL" >&2; exit 14 ;;
+  REGRESSION) echo "[eval-harness] baseline refuses regression results" >&2; exit 12 ;;
+  NEEDS_REVIEW) echo "[eval-harness] baseline requires completed human review" >&2; exit 15 ;;
+  INDETERMINATE) echo "[eval-harness] baseline requires available evidence" >&2; exit 16 ;;
+  *) echo "[eval-harness] baseline refuses run verdict $run_verdict" >&2; exit 13 ;;
+esac
+
 
 source "$SCRIPT_DIR/lib/skills_root.sh"
 source "$SCRIPT_DIR/lib/preflight.sh"
@@ -75,13 +88,27 @@ jq -c '.cases[]' "$LATEST_RUN_DIR/results.json" | while read -r case_json; do
     continue
   fi
 
-  echo "$case_json" | jq '{
-    schema_version: 2,
+  # --portable marks the baseline's env_manifest as making no model/opencode claim, so it
+  # can be committed and consumed across machines without false-flagging MODEL_CHANGED
+  # (diff_manifests strips only model_id+opencode_version for portable baselines).
+  tmp_baseline="$baseline_path.tmp.$$"
+  echo "$case_json" | jq --argjson portable "$PORTABLE" --arg run_id "$RUN_ID" '{
+    schema_version: 3,
     case_id: .case_id,
+    source_run_id: $run_id,
     passed: .passed,
+    status: .status,
+    eval_type: .evaluation_type,
+    compare_to_baseline: .compare_to_baseline,
     checks: .checks,
-    env_manifest: .env_manifest,
+    quality: .quality,
+    reliability: .reliability,
+    resources: .resources,
+    grading_manifest: .grading_manifest,
+    env_manifest: (if $portable == 1 then (.env_manifest + {portable: true}) else .env_manifest end),
     last_seen_triggers: ["baseline"]
-  }' > "$baseline_path"
-  echo "[eval-harness] wrote baseline: $baseline_path"
+  }' > "$tmp_baseline"
+  inject_baseline_checksum "$tmp_baseline"
+  mv "$tmp_baseline" "$baseline_path"
+  echo "[eval-harness] wrote baseline: $baseline_path$([[ "$PORTABLE" == "1" ]] && echo ' (portable)')"
 done

@@ -89,4 +89,18 @@ PY
   return 127
 }
 
-export -f portable_sha256_file portable_sha256_stdin portable_sort_nul resolve_timeout_bin run_with_timeout
+# Deterministic directory digest over sorted relative-path/content-hash pairs.
+# NUL separators preserve arbitrary filenames and make the byte encoding portable.
+portable_tree_sha256() {
+  local root="$1"
+  [[ -d "$root" ]] || { echo "[eval-harness] directory not found for digest: $root" >&2; return 1; }
+  (
+    cd "$root" || exit 1
+    find . -type f -print0 | portable_sort_nul | while IFS= read -r -d '' file; do
+      file_sha="$(portable_sha256_file "$file" | cut -d' ' -f1)" || exit 1
+      printf '%s\0%s\0' "$file" "$file_sha"
+    done
+  ) | portable_sha256_stdin | cut -d' ' -f1
+}
+
+export -f portable_sha256_file portable_sha256_stdin portable_sort_nul portable_tree_sha256 resolve_timeout_bin run_with_timeout

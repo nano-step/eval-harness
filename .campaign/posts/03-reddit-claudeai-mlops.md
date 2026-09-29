@@ -77,7 +77,7 @@ Sharing eval-harness, a regression-detection harness for LLM-agent systems. Desi
 
 - **Hard $ daily ceiling** with persistence in `budget.ndjson`. Default $2.00.
 
-- **20 test suites, all green on main**. Includes BSD/GNU grep portability (closed BLK-4 in the audit), fixture path-traversal blocking (BLK-3), sandboxed shell-check filter (BLK-2), timeout-124 → harness-error not vacuous PASS (BLK-8).
+- **Historical v0.4.2 hardening** included BSD/GNU grep portability (BLK-4), fixture-path traversal blocking (BLK-3), and a heuristic shell-command filter (BLK-2; not an OS sandbox). v0.5.0 narrows implicit-safe shell commands to a shell-free argv allowlist.
 
 - **Warn-only by default** with explicit `promote` command. Auto-promotion (`N green days → blocking`) is v0.6.0.
 

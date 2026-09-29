@@ -34,13 +34,22 @@ export PATH="$STUB_BIN:$PATH"
 
 bash "$REPO_ROOT/scripts/eval/run.sh" --skill=omo-session-distiller --case=atom-tags-decision-architecture --mode=smoke > "$WORK/smoke.log" 2>&1 || true
 
-SMOKE_RUN="$(ls -dt "$EVAL_STATE_DIR/runs"/* | head -1)"
+SMOKE_RUN="$(ls -dt "$EVAL_STATE_DIR/runs"/* 2>/dev/null | head -1)"
+if [[ -z "$SMOKE_RUN" || ! -f "$SMOKE_RUN/results.json" ]]; then
+  echo "FAIL: smoke run did not write results.json at '$SMOKE_RUN'" >&2
+  cat "$WORK/smoke.log" >&2
+  exit 1
+fi
 SMOKE_MODEL="$(jq -r '.cases[0].env_manifest.model_id' "$SMOKE_RUN/results.json")"
-[[ "$SMOKE_MODEL" == "anthropic/claude-3-5-haiku-latest" ]] || \
-  { echo "FAIL: smoke mode should pin haiku model, got '$SMOKE_MODEL'" >&2; exit 1; }
+[[ "$SMOKE_MODEL" == "anthropic/claude-3-5-haiku-latest" ]] || { echo "FAIL: smoke mode should pin haiku model, got '$SMOKE_MODEL'" >&2; exit 1; }
 
 bash "$REPO_ROOT/scripts/eval/run.sh" --skill=omo-session-distiller --case=atom-tags-decision-architecture --mode=full > "$WORK/full.log" 2>&1 || true
-FULL_RUN="$(ls -dt "$EVAL_STATE_DIR/runs"/* | head -1)"
+FULL_RUN="$(ls -dt "$EVAL_STATE_DIR/runs"/* 2>/dev/null | head -1)"
+if [[ -z "$FULL_RUN" || ! -f "$FULL_RUN/results.json" ]]; then
+  echo "FAIL: full run did not write results.json at '$FULL_RUN'" >&2
+  cat "$WORK/full.log" >&2
+  exit 1
+fi
 FULL_MODEL="$(jq -r '.cases[0].env_manifest.model_id' "$FULL_RUN/results.json")"
 [[ "$FULL_MODEL" == "anthropic/claude-sonnet-4-6" ]] || \
   { echo "FAIL: full mode should pin sonnet-4-6, got '$FULL_MODEL'" >&2; exit 1; }

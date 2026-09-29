@@ -61,6 +61,8 @@ kind="$(echo "$result" | jq -r '.fix_proposal.kind')"
 snippet="$(echo "$result" | jq -r '.fix_proposal.patch_snippet')"
 [[ "$kind" == "missing_file" ]] || { echo "FAIL: fe kind=$kind" >&2; exit 1; }
 [[ "$snippet" == "review.md" ]] || { echo "FAIL: fe snippet=$snippet" >&2; exit 1; }
+auto_apply="$(echo "$result" | jq -r '.fix_proposal.auto_apply')"
+[[ "$auto_apply" == "true" ]] || { echo "FAIL: safe missing-file proposal is not eligible for apply" >&2; exit 1; }
 
 llm_fail='{
   "kind": "llm_judge",

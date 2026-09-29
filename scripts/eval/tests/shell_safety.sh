@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/../lib/score.sh"
 
 WORK="$(mktemp -d -t eval-harness-shell.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
+printf '{"writes":[]}\n' > "$WORK/nano-brain-store.json"
 
 mkcheck() {
   local file="$1"; shift
@@ -47,6 +48,18 @@ out="$(score_shell "$WORK/dangerous-curl.yaml" "$WORK")"
 err="$(echo "$out" | jq -r '.error // false')"
 [[ "$err" == "true" ]] || { echo "FAIL: curl NOT rejected" >&2; echo "$out" >&2; exit 1; }
 
+
+cat > "$WORK/dangerous-python.yaml" <<YAML
+kind: shell
+cmd: |
+  python3 -c 'open("$WORK/python-pwned", "w").close()'
+expect_min: 0
+YAML
+out="$(score_shell "$WORK/dangerous-python.yaml" "$WORK")"
+err="$(echo "$out" | jq -r '.error // false')"
+[[ "$err" == "true" ]] || { echo "FAIL: python3 interpreter NOT rejected" >&2; echo "$out" >&2; exit 1; }
+[[ ! -e "$WORK/python-pwned" ]] || { echo "FAIL: implicit-safe shell grader executed Python code" >&2; exit 1; }
+
 mkcheck "$WORK/dangerous-cmdsub.yaml" \
   'cmd: "echo $(whoami)"' \
   'expect_min: 0'
@@ -68,10 +81,50 @@ out="$(score_shell "$WORK/dangerous-redirect.yaml" "$WORK")"
 err="$(echo "$out" | jq -r '.error // false')"
 [[ "$err" == "true" ]] || { echo "FAIL: > redirect NOT rejected" >&2; echo "$out" >&2; exit 1; }
 
-mkcheck "$WORK/opt-in.yaml" \
-  'cmd: "rm -rf nonexistent_dir"' \
-  'expect_exact: ""' \
-  'unsafe_shell: true'
+printf '{"secret":"CANARY"}\n' > "$WORK/private.json"
+mkcheck "$WORK/dangerous-jq-path.yaml" 'cmd: "jq -r .secret ../private.json"' 'expect_exact: CANARY'
+out="$(score_shell "$WORK/dangerous-jq-path.yaml" "$WORK")"
+[[ "$(echo "$out" | jq -r '.error // false')" == "true" && "$out" != *CANARY* ]] || {
+  echo "FAIL: jq path traversal was not rejected without exposing the external file" >&2
+  echo "$out" >&2
+  exit 1
+}
+export SAFE_SHELL_SECRET_CANARY=do-not-print
+assert_jq_env_rejected() {
+  local name="$1" expression="$2" file="$WORK/dangerous-jq-env-$1.yaml"
+  cat > "$file" <<YAML
+kind: shell
+cmd: |
+  jq -n '$expression'
+expect_exact: "{}"
+YAML
+  local out
+  out="$(score_shell "$file" "$WORK")"
+  [[ "$(echo "$out" | jq -r '.error // false')" == "true" && "$out" != *do-not-print* ]] || {
+    echo "FAIL: jq environment access $expression was not rejected" >&2
+    echo "$out" >&2
+    exit 1
+  }
+}
+assert_jq_env_rejected direct 'env'
+assert_jq_env_rejected property 'env.PATH'
+assert_jq_env_rejected index 'env["SAFE_SHELL_SECRET_CANARY"]'
+
+mkdir "$WORK/path-hijack-workdir"
+cat > "$WORK/path-hijack-workdir/jq" <<'SH'
+#!/bin/sh
+printf 'pwned\n' > "$SAFE_SHELL_PATH_CANARY"
+printf 'null\n'
+SH
+chmod +x "$WORK/path-hijack-workdir/jq"
+mkcheck "$WORK/path-hijack.yaml" 'cmd: "jq -n null"' 'expect_exact: "null"'
+out="$(PATH=".:$PATH" SAFE_SHELL_PATH_CANARY="$WORK/path-hijacked" score_shell "$WORK/path-hijack.yaml" "$WORK/path-hijack-workdir")"
+[[ "$(echo "$out" | jq -r '.error // false')" == "false" && ! -e "$WORK/path-hijacked" ]] || {
+  echo "FAIL: default-safe runner resolved jq from the attacker-controlled workdir" >&2
+  echo "$out" >&2
+  exit 1
+}
+mkcheck "$WORK/opt-in.yaml" 'cmd: "rm -rf nonexistent_dir"' 'expect_exact: ""' 'unsafe_shell: true'
 out="$(score_shell "$WORK/opt-in.yaml" "$WORK")"
 err="$(echo "$out" | jq -r '.error // false')"
 [[ "$err" == "false" ]] || { echo "FAIL: unsafe_shell:true opt-in still rejected" >&2; echo "$out" >&2; exit 1; }
@@ -83,5 +136,5 @@ EVAL_ALLOW_UNSAFE_SHELL=1 out="$(score_shell "$WORK/env-override.yaml" "$WORK")"
 err="$(echo "$out" | jq -r '.error // false')"
 [[ "$err" == "false" ]] || { echo "FAIL: EVAL_ALLOW_UNSAFE_SHELL=1 still rejected" >&2; echo "$out" >&2; exit 1; }
 
-echo "PASS: shell safety filter — accepts jq/pipes/wc; rejects rm/curl/\$()/backtick/>; honors unsafe_shell + EVAL_ALLOW_UNSAFE_SHELL"
+echo "PASS: constrained shell runner accepts jq/pipelines/printf and rejects interpreters, shell operators, external paths, jq environment access, and workdir executable hijacks; explicit unsafe opt-in remains available"
 exit 0

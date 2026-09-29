@@ -4,15 +4,41 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] — Unreleased
 
 ### Added
+- Typed case evaluation: capability, regression, and product; required/optional checks; explicit PASS, FAIL, ERROR, NEEDS_REVIEW, and INDETERMINATE run states.
+- Product metric_score, ordered trajectory, and provenance-bearing human_review graders. Product dimensions are reported independently with weighted means per dimension; no global quality score.
+- Provider-neutral grade command with schema-1 manifests binding case, workdir tree, transcript, artifacts, environment, and provenance by digest; strict exits 13–16.
+- Stochastic pass@k/pass^k estimates with Wilson bounds and explicit same-case/config IID assumption.
+- Environment manifest schema 4 with prompt, rubric, and optional tool-manifest hashes; new hashes do not invalidate older schema-2/3 baselines.
+- Evidence-focused attribution classes and explanations; cross-skill hash changes are not presented as causal proof.
+- Ten deterministic v2 dogfood cases plus content-addressing, legacy-manifest, budget, baseline-provenance, and A/B integration tests.
+- Shell checks support ordered `expect_exact_lines` assertions with trailing-whitespace normalization.
+- Optional JUnit XML and SARIF report exports are available; JUnit testcase times use measured case durations.
+- Implicit-safe shell checks use a shell-free argv runner for jq/printf/wc -l and confine jq inputs to the case workdir; arbitrary commands require explicit unsafe_shell: true.
+- Offline metaeval reports harness false-positive, false-negative, and attribution accuracy separately from skill results.
+- Pre-push can include or exclude branch globs through .opencode/eval-harness.yaml.
 
-- Shell checks now support `expect_exact_lines` for ordered stdout line matching while ignoring trailing whitespace per line and blank trailing lines.
+### Changed
+- **Documented 0.x breaking change:** implicit-safe shell checks now accept only constrained jq/printf/wc -l argv pipelines; migrate other commands to a typed grader or mark trusted cases unsafe_shell: true.
+- Baseline records use schema 3 and retain the source run ID; baseline and acceptance writes bind to a specific run and require a PASS. Rebaseline refuses missing, pending, or unavailable evidence; model-change override is explicit.
+- Run results use schema 3 and retain the legacy passed boolean while adding typed case states, regression booleans, dimension scores, resource coverage, and grading-manifest references.
+- Unknown token/cost usage is null/unavailable, never zero. A budget-configured ledger blocks follow-up runs until unmeasured spend is reconciled.
+- Ordinary promotion readiness requires run history spanning seven days, a recent run, and no bypass or malformed-history events; --check is read-only and --force is recorded.
+- A/B selection uses run IDs, supports independent model overrides, reports metric/resource deltas, and fails closed on missing case results. Cost increase thresholds warn only.
+- npm test runs the full local evaluation test suite. Bash 3.2-compatible loops replace mapfile in the runner, scorer, calibrator, and hooks.
+- LangGraph fingerprints use workdir-relative paths and remain stable across runs; stochastic samples execute in isolated workdirs.
 
 ### Fixed
+- Capability/product failures are not mislabeled as regressions without explicit baseline comparison.
+- Empty case selections, empty grader sets, malformed baseline-comparison settings, skipped case files, rejected fixtures, and lock timeouts no longer collapse into PASS or disappear from the run summary.
+- Pre-push now propagates the actual first failing command status.
+- Reported cost totals remain null when any case cost is unmeasured; per-case and run-level coverage distinguishes unavailable from zero.
+- Preflight reports missing Python or an unusable yq-shim fallback before evaluation starts.
 
-- `preflight_check` now reports missing `python3` or PyYAML when the `yq` binary is absent and the yq-shim fallback would otherwise fail later without a useful hint.
+### Research and design
+- Recorded an offline Janus 0.1.10 benchmark; its experimental eval CLI did not invoke the candidate executor in the matched deterministic scenario, so no native Janus adapter is advertised.
 
 ## [0.4.2] — 2026-05-30
 

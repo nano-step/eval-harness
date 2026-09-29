@@ -6,6 +6,9 @@ _LLM_JUDGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JUDGE_DEFAULT_MODEL="${EVAL_LLM_JUDGE_MODEL:-claude-sonnet-4-6}"
 JUDGE_API_URL="${ANTHROPIC_API_URL:-https://api.anthropic.com/v1/messages}"
 JUDGE_API_VERSION="${ANTHROPIC_API_VERSION:-2023-06-01}"
+judge_system_prompt() {
+  printf '%s\n' 'You are a strict, terse code-review judge. The skill under test produced an artifact. You will be given a rubric and the artifact. Reply with EXACTLY one of: PASS or FAIL on the first line, then up to 3 lines of justification. Do not hedge. Do not explain the rubric back. If the artifact is empty or unrelated, FAIL.'
+}
 
 llm_judge_call_once() {
   local model="$1"

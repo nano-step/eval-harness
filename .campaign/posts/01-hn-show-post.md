@@ -35,7 +35,7 @@ eval-harness is built around 4 ideas:
 
 It's bash + jq + python3 stdlib. No daemon, no Node CLI, no SaaS, MIT. Ships with a git pre-push hook and a GitHub Action.
 
-v0.4.2 closed 8 BLOCKERs surfaced by independent audits — I'm being honest that the project is 4 weeks old, but the internals are solid (20/20 test suites green, including BSD-grep portability, fixture path-traversal blocking, and a sandboxed shell-check filter).
+v0.4.2 closed eight audit-reported blockers, including BSD-grep portability and fixture path traversal. Its shell-command filter was heuristic rather than a sandbox; v0.5.0 replaces implicit-safe shell execution with a constrained argv runner and documents the remaining opt-in risk.
 
 Works with opencode skills today. LangGraph and Claude Agent SDK runners are tracked (help-wanted issue #36 if you want to build one).
 

@@ -1,0 +1,1 @@
+{"mutation":"cross_skill","expected_verdict":"REGRESSION","expected_attribution_top":"CROSS_SKILL_CHANGE","should_detect":true,"note":"2-skill bundle; non-SUT skill changed (deliberate multi-skill exception)"}
