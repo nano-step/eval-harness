@@ -1,13 +1,25 @@
-# Documentation index
+# eval-harness documentation
 
-| Doc | When to read |
-|---|---|
-| [`concepts.md`](./concepts.md) | First. Explains the 4 ideas that make eval-harness different (6-field FAIL, 4-class attribution, 3-sample stability, $-cost gating). |
-| [`comparison.md`](./comparison.md) | "How does this compare to promptfoo / DeepEval / Ragas / OpenAI Evals?" |
-| [`why-not-promptfoo.md`](./why-not-promptfoo.md) | Direct head-to-head: where promptfoo wins, where eval-harness wins, when to use both. |
-| [`runners.md`](./runners.md) | Want to use eval-harness with LangGraph / Claude Agent SDK / your own framework? Start here. |
-| [`../README.md`](../README.md) | Top-level overview + quick start. |
-| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | How to land a PR. Required reading before opening one. |
-| [`../CHANGELOG.md`](../CHANGELOG.md) | What shipped when. |
-| [`../KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) | Pinned bug list. |
-| [`../standards/skill-quality-v1.md`](../standards/skill-quality-v1.md) | **Separate concern** — deferred skill _design_ review heuristics. |
+Current stable release: **v0.5.0**. The CLI is distributed from the GitHub source repository; it is not published to npm.
+
+## Start here
+
+- [Project overview and quick start](../README.md) — supported evaluation types, check kinds, installation, shell trust boundary, and examples.
+- [Runner contract](./runners.md) — OpenCode execution and the interface for prepared evidence from other runners.
+- [LangGraph example](../examples/langgraph-runner/) — a runnable example of the runner contract.
+
+## Contracts and design
+
+- [v0.5.0 design and migration contract](./EVAL_HARNESS_V2.md) — result states, schemas, compatibility, and deferred scope.
+- [Versioning and deprecation policy](../POLICY.md) — including the documented shell-check breaking change.
+- [Security policy](../SECURITY.md) — supported versions and the shell execution boundary.
+- [Known issues](../KNOWN_ISSUES.md) — verified open limitations.
+
+## Evidence and project history
+
+- [Janus benchmark](./JANUS_BENCHMARK.md) — offline comparison evidence; no native Janus execution adapter is recommended yet.
+- [ECC research](./ECC_RESEARCH.md) — design rationale and source evidence.
+- [Changelog](../CHANGELOG.md) — changes by release.
+- [Contributing](../CONTRIBUTING.md) — tests, review, and release workflow.
+
+All deterministic local tests run with `npm test`. They use fixtures and stub runners; they do not measure live model quality, latency, or cost.
