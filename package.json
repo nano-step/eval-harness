@@ -1,7 +1,7 @@
 {
   "name": "@nano-step/eval-harness",
   "version": "0.5.0",
-  "description": "Bash-first typed capability, product-quality, and regression evaluation harness for OpenCode skills.",
+  "description": "Typed evaluation for OpenCode skills and AI agents: capability, regression and product checks; provider-neutral evidence grading, provenance, and CI reports.",
   "license": "MIT",
   "author": "Hoài Nhớ <nhoxtvt@gmail.com>",
   "homepage": "https://github.com/nano-step/eval-harness",
