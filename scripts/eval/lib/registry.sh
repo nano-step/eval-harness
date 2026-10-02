@@ -62,7 +62,7 @@ registry_is_enabled() {
   [[ -z "$repo" ]] && return 1
   local path; path="$(registry_path)"
   [[ -f "$path" ]] || return 1
-  yq -r '.enabled_repos[]?' "$path" | grep -Fxq "$repo"
+  yq -r '.enabled_repos[]?' "$path" | grep -Fxq -- "$repo"
 }
 
 repo_name_from_path() {
