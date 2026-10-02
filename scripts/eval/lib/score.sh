@@ -144,7 +144,7 @@ score_shell() {
 
   local passed="false"
   local diff_hint=""
-  if [[ -n "$expect_regex" ]] && echo "$out" | grep -Eq "$expect_regex"; then
+  if [[ -n "$expect_regex" ]] && echo "$out" | grep -Eq -- "$expect_regex"; then
     passed="true"
   elif [[ -n "$expect_min" ]]; then
     local n; n="$(echo "$out" | tr -d ' \n')"
@@ -273,7 +273,7 @@ score_output_contains() {
   local end_line=""
   if [[ -f "$transcript" ]]; then
     local match
-    match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
+    match="$(grep -n -F -- "$needle" "$transcript" | head -1 || true)"
     if [[ -n "$match" ]]; then
       passed=true
       line_no="${match%%:*}"
@@ -375,7 +375,7 @@ score_output_not_contains() {
   local passed=true
   local line_no=""
   local match
-  match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
+  match="$(grep -n -F -- "$needle" "$transcript" | head -1 || true)"
   if [[ -n "$match" ]]; then
     passed=false
     line_no="${match%%:*}"

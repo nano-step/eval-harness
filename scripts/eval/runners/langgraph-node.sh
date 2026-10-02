@@ -384,7 +384,7 @@ langgraph_node_fingerprint() {
     has_prompt_files=1
   done < <(find "$workdir" -maxdepth 1 -type f -name 'prompt_template_*.txt' -print0 | portable_sort_nul)
   module_sha="$(portable_sha256_file "$module_path" | cut -d' ' -f1)"
-  tool_bodies="$( { grep -h -B1 -A2 -E '^@tool' "${files_to_grep[@]}" 2>/dev/null || true; } | portable_sha256_stdin | cut -d' ' -f1)"
+  tool_bodies="$( { grep -h -B1 -A2 -E '^@tool' -- "${files_to_grep[@]}" 2>/dev/null || true; } | portable_sha256_stdin | cut -d' ' -f1)"
   {
     printf '%s\0%s\0%s\0' module "$module_file" "$module_sha"
     if [[ "$has_tool_files" == "1" ]]; then
