@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "as_of": "2026-05-29",
+  "as_of": "2026-10-01",
   "stale_after_days": 60,
-  "source": "https://www.anthropic.com/pricing (validated 2026-05-29)",
+  "source": "anthropic.com/pricing + openrouter.ai/api/v1/models (validated 2026-10-01); claude-3-5-haiku prices carried from 2026-05-29 validation",
   "models": {
     "anthropic/claude-3-5-haiku-latest": {
       "input_per_mtok_usd": 1.00,
@@ -17,8 +17,16 @@
       "output_per_mtok_usd": 15.00
     },
     "anthropic/claude-opus-4-7": {
-      "input_per_mtok_usd": 15.00,
-      "output_per_mtok_usd": 75.00
+      "input_per_mtok_usd": 5.00,
+      "output_per_mtok_usd": 25.00
+    },
+    "openrouter/google/gemini-3.8-flash": {
+      "input_per_mtok_usd": 0.75,
+      "output_per_mtok_usd": 3.75
+    },
+    "openrouter/xiaomi/mimo-v2.6-flash": {
+      "input_per_mtok_usd": 0.14,
+      "output_per_mtok_usd": 0.28
     }
   }
 }
