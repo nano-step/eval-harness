@@ -86,6 +86,16 @@ else
   }
 fi
 
+# The Python timeout fallback must pass piped input to the child, not consume
+# it as the wrapper program. Keep GNU timeout and gtimeout out of PATH.
+mkdir "$WORK/python-only"
+ln -s "$(command -v python3)" "$WORK/python-only/python3"
+input="$(printf '%s' '{"repository":"/fixture"}' | PATH="$WORK/python-only" run_with_timeout 5 /bin/cat)"
+[[ "$input" == '{"repository":"/fixture"}' ]] || {
+  echo "FAIL: Python timeout fallback did not preserve child stdin" >&2
+  exit 1
+}
+
 cp "$REPO_ROOT/scripts/eval/hooks/pre-push" "$WORK/pre-push-copy"
 chmod +x "$WORK/pre-push-copy"
 "$WORK/pre-push-copy" origin git@example.invalid </dev/null

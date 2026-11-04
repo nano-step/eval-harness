@@ -183,6 +183,13 @@ changed paths. These prerequisite measurements are not feature acceptance.
   after the same fix. The complete post-fix gate passed all 76 suites in
   2,477.89 seconds, with live Vitest and the approved domain browser inputs.
   The failed earlier run remains recorded above.
+- The first PR CI run exposed three platform-specific failures missed locally:
+  jq 1.6 rejected an unparenthesized manifest expression; the Python timeout
+  fallback consumed the child process's piped input; and a sourced test helper
+  overwrote the Jev test's directory variable. CI evidence could not complete
+  and was not promoted. The manifest fix passed a real Linux jq 1.6 grading
+  test; the timeout fallback now has a piped-input regression. The corrected
+  workflows require a fresh independent CI run.
 
 
 ## 0. Decision summary

@@ -21,7 +21,8 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Downstream repair/QA/gate consumers recompute findings rather than trusting result JSON; replay admission rejects injected or alternate manifest-selected host checks, and promotion requires the original trusted review.
 - Generated tests retain their revision-relative placement independently of the host input directory, so nested relative imports resolve without rewriting test source.
 - Mutation overlays honor rejected or invalid expectation reviews rather than accepting unsupported assertions merely because the test passes before mutation.
-- Mutation execution verifies signed baseline/current raw evidence before computing counts; unsigned baselines are refused before Docker execution. Derived report-consumer hardening remains tracked in the audit.
+- Mutation execution and pilot reports verify signed raw evidence before computing counts; unsigned baselines cannot fabricate coverage gains.
+- The Python timeout fallback preserves piped standard input; grading manifests use jq 1.6-compatible object expressions.
 
 ## [0.5.0] — 2026-09-30
 

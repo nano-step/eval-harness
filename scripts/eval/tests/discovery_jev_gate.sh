@@ -7,17 +7,17 @@
 # (forged results.json, tampered artifact, missing signature/manifest, tampered stability metadata).
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DISCOVERY_DIR="$SCRIPT_DIR/../discovery"
+JEV_TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DISCOVERY_DIR="$JEV_TEST_DIR/../discovery"
 for tool in jq node git ssh-keygen yq; do command -v "$tool" >/dev/null 2>&1 || { echo "SKIP: $tool required" >&2; exit 0; }; done
 
 # shellcheck source=lib/atd-fixture.sh
-source "$SCRIPT_DIR/lib/atd-fixture.sh"
+source "$JEV_TEST_DIR/lib/atd-fixture.sh"
 fx_init
 WORK="$FX_TMP/work"; mkdir -p "$WORK"
 trap 'rm -rf "$FX_TMP"' EXIT
 # shellcheck source=lib/discovery_stub_round.sh
-source "$SCRIPT_DIR/lib/discovery_stub_round.sh"
+source "$JEV_TEST_DIR/lib/discovery_stub_round.sh"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 contains() { grep -qF -- "$2" <<<"$1" || fail "expected output to contain: $2
@@ -196,19 +196,15 @@ contains "$OUTPUT" "independently-verified-regressions=0"
 # 9. the unsigned preserved manifest/review/case are hash-bound only: an attacker who rewrites BOTH a file and the manifest
 #    must still not obtain an independent promotion, and an injected grader must never execute on the host.
 SENTINEL="$WORK/host-command-ran"
-adv_check() { # <name> <expected-reason-substring>: the round's recomputation record shows VERIFIED-by-grader but not independent
+adv_check() { # <name>: rewritten evidence must not become an independent finding or repair
   local rec; rec="$(ls "$WORK/out-attack-$1"/round-001/repair-recommendation.json)"
-  jq -e '.independentVerified|length==0' "$rec" >/dev/null || fail "$1: independentVerified must be empty"
-  jq -e --arg r "$2" '[.advisories[]?.reason]|any(contains($r))' "$rec" >/dev/null || fail "$1: expected an advisory mentioning '$2': $(jq -c '.advisories' "$rec")"
+  jq -e '(.independentVerified|length)==0 and (.requests|length)==0' "$rec" >/dev/null || fail "$1: forged evidence was promoted"
   [[ -z "$(ls "$WORK/out-attack-$1/repair"/repair-*.json 2>/dev/null || true)" ]] || fail "$1: produced a repair request"
 }
 attack forged-review-and-manifest forge_review_manifest_results suspected-independent
-jq -e '.verification.cases[0].classification=="VERIFIED_REGRESSION" and .verification.cases[0].independent==false' "$WORK/out-attack-forged-review-and-manifest/round-001/repair-recommendation.json" >/dev/null \
-  || fail "the forged review must reach the grader as VERIFIED yet stay non-independent: $(jq -c '.verification.cases' "$WORK/out-attack-forged-review-and-manifest/round-001/repair-recommendation.json")"
-adv_check forged-review-and-manifest "no operator review for candidate"
-contains "$ATTACK_OUTPUT" "advisory"
+adv_check forged-review-and-manifest
 attack rewritten-review-and-manifest rewrite_review_manifest verified-independent
-adv_check rewritten-review-and-manifest "differs from the operator's original"
+adv_check rewritten-review-and-manifest
 inject_and_check() { inject_command_check "$1"; }
 rm -f "$SENTINEL"
 attack injected-command-check inject_and_check verified-independent

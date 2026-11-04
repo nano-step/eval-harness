@@ -114,12 +114,12 @@ mode="$(yq -r '.mode // "deterministic"' "$case_file" 2>/dev/null || echo determ
     --argjson artifacts "$artifacts_json" --argjson env "$env_json" --argjson stab "$gm_stab" \
 '{schema_version:1,run_id:$run_id,case_id:$case_id,mode:$mode,eval_type:$eval_type,
       case_file:{path:$case_path,sha256:$case_sha},
-      evidence:{
+      evidence:({
         workdir:{path:$workdir_path,status:"available",sha256:$workdir_sha},
         transcript:({path:$transcript_path,status:$transcript_status} + (if $transcript_status=="available" then {sha256:$transcript_sha} else {} end)),
         artifacts:$artifacts,
         environment_manifest:({path:"env-manifest.json",status:$env_status} + (if $env_status=="available" then {sha256:$env_sha} else {} end))
-      } + (if $stab==null then {} else {stability:$stab} end),
+      } + (if $stab==null then {} else {stability:$stab} end)),
       provenance:{runner:{name:($env.runner // "opencode"),version:(if $env.runner=="langgraph-node" then ($env.langgraph_version // "unknown") else ($env.opencode_version // "unknown") end)},model_id:($env.model_id // "unknown"),manifest_schema:($env.schema_version // null)}
     }' > "$out"
 }
