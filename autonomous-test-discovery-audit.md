@@ -188,8 +188,17 @@ changed paths. These prerequisite measurements are not feature acceptance.
   fallback consumed the child process's piped input; and a sourced test helper
   overwrote the Jev test's directory variable. CI evidence could not complete
   and was not promoted. The manifest fix passed a real Linux jq 1.6 grading
-  test; the timeout fallback now has a piped-input regression. The corrected
-  workflows require a fresh independent CI run.
+  test; the timeout fallback now has a piped-input regression.
+- The corrected [independent CI run](https://github.com/nano-step/eval-harness/actions/runs/41824511878)
+  passed on the PR merge commit for head `cd9d8232311e6a6821f4b95a73655007c985be8b`.
+  Its ephemeral public signer fingerprint matched the authenticated job log;
+  downloaded mutation and differential signatures were independently verified.
+  All eight collision behaviors were covered, clean runs stayed unflagged,
+  four independently signed regressions reproduced, and block mode emitted
+  one bounded repair request. The two zero-size guard mutants changed from
+  Survived to Killed (31/35 to 33/35); frozen replay made zero model calls.
+  Linux and macOS shell CI also passed. The run's fixture and signer are
+  isolated CI evidence, not proof of production signer separation.
 
 
 ## 0. Decision summary
