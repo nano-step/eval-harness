@@ -8,17 +8,16 @@ A **runner** is a pluggable adapter that lets the eval-harness regression-test
 agents built on any framework, not just opencode. The case YAML, typed checks
 and 4-class attribution stay shared — the spawn layer varies.
 
-The source tree includes three runners:
+The source tree includes these runners:
 
-- **`opencode`** — the implicit default; the original agent. No adapter file
-  exists for it; the dispatcher has a fast-path that calls the existing
-  `spawn_opencode`, `token_total`, and preflight probes directly.
-- **`langgraph-node`** — the first explicit adapter, added in v0.5.0. Runs
-  Python-based LangGraph graphs via `python3 -m <module> --input X --output Y`.
-- **`atd-sandbox`** — independent base/candidate test execution in digest-pinned,
-  fail-closed Docker containers for Autonomous Test Discovery.
+- **`opencode`** — the implicit default.
+- **`omp`**, **`claude-code`**, **`codex`** — native, locally authenticated
+  coding-agent CLIs. Install and authenticate each CLI independently.
+- **`langgraph-node`** — Python-based LangGraph graphs.
+- **`atd-sandbox`** — confined base/candidate test execution; not an agent.
 
-Future runners (Python generic, HTTP, MCP) are proposed but not yet shipped.
+Other agents can be connected with a trusted custom runner. This is an
+integration contract, not a claim that every agent is supported out of the box.
 
 ## The contract
 
@@ -28,51 +27,49 @@ table below is the contract surface.
 
 | Subcommand    | Signature                                                  | Purpose                                                                                  | Exit codes            |
 | ------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
-| `prepare`     | `<name>_prepare <workdir> <config_json>`                   | Stage the workdir (e.g. materialize fixtures, build a venv) before `spawn`.              | 0 ok, non-zero error  |
-| `spawn`       | `<name>_spawn <workdir> <config_json> <transcript> [prompt]` | Run the agent; write a `transcript.jsonl` and any outputs.                             | 0 ok, non-zero error  |
-| `fingerprint` | `<name>_fingerprint <workdir> <config_json>`               | Compute a hash of the graph / agent definition for attribution (skips outputs).          | 0 ok; stdout = hash    |
-| `teardown`    | `<name>_teardown <workdir> <config_json>`                  | Clean up after `spawn` (e.g. drop the venv, remove temp files). Idempotent and best-effort. | 0 ok, non-zero warn |
+| `prepare`     | `prepare <workdir> <config_json>`                    | Stage the workdir before `spawn`. | 0 ok, non-zero error |
+| `spawn`       | `spawn <workdir> <config_json> <transcript> <prompt>` | Run the agent; write a JSONL transcript and any outputs. | 0 ok, non-zero error |
+| `fingerprint` | `fingerprint <workdir> <config_json>`                | Identify the agent definition when known. | 0 ok; stdout = fingerprint |
+| `teardown`    | `teardown <workdir> <config_json>`                   | Clean up after execution; idempotent and best-effort. | 0 ok, non-zero warning |
 
-The dispatcher routes each subcommand to the runner's function via
-`dispatch_runner <name> <subcommand> <args...>`. `run.sh` calls the
-dispatcher for the runner selected by the active invocation (CLI flag or
-case YAML default). The case YAML's `runner:` field is a required-to-match
-guard: if it differs from the active runner, the case is skipped (one-line
-notice on stderr, exit 0 for the case).
+The dispatcher invokes adapter scripts via Bash. OpenCode and LangGraph retain
+their existing specialized invocation paths. A case-declared `runner:` must
+match an explicit `--runner` or `EVAL_RUNNER` selection; a mismatch is an
+error, not a skipped passing case.
 
-## Authoring a new runner
+## Authoring a custom runner
 
-Step-by-step:
+Set `EVAL_RUNNERS_DIR` to a directory of **trusted** adapter scripts and select
+one with `--runner=<name>` or a case's `runner:`. The name must start with a
+letter or digit and contain only letters, digits, `.`, `_`, or `-`; `..` and
+path separators are rejected. The adapter is `EVAL_RUNNERS_DIR/<name>.sh` and
+is invoked with Bash. This directory takes precedence over shipped adapters;
+shipped names remain available when no override exists. A CLI-selected runner
+also applies when a case does not declare one.
 
-1. **Create** `scripts/eval/runners/<name>.sh`. The filename MUST match the
-   `runner:` value the case YAMLs will use.
+Implement `prepare`, `spawn`, `fingerprint`, and `teardown` using the signatures
+above. `spawn` must write JSONL transcript evidence and return nonzero on
+failure. Adapters run as trusted host code with the caller's environment and
+permissions; the harness does not sandbox them. Never use an untrusted adapter.
+The `omp`, `claude-code`, and `codex` adapters are examples.
 
-2. **Implement the four subcommand functions** (`<name>_prepare`,
-   `<name>_spawn`, `<name>_fingerprint`, `<name>_teardown`) as bash
-   functions in the file. Follow the signatures above. Each function
-   MUST be `export -f`-ed so `dispatch_runner` can find it after the
-   adapter is sourced.
+## Native coding-agent CLIs
 
-3. **Register the runner** at the bottom of the adapter file with
-   `register_runner <name> "$BASH_SOURCE"`. This adds `<name>` to
-   `runner_names` and exposes the four subcommands through
-   `dispatch_runner`.
+Select `--runner=omp`, `--runner=claude-code`, or `--runner=codex`; alternatively
+set the case's `runner:`. Each CLI needs its own installation and login. The
+case's `prompt` is passed through stdin, and stdout is captured as one JSONL
+result event. The case-level `model` or `runner_config.model` may select a
+model; A/B overrides and case-level model take precedence over
+`runner_config.model`. If none is specified, the CLI chooses its own default.
+Token usage and cost are unavailable unless independently measured; they are
+not inferred from text output.
 
-4. **Source the adapter** from `scripts/eval/run.sh` (or have it
-   auto-discovered under `scripts/eval/runners/`). The langgraph-node
-   adapter is sourced unconditionally; future adapters can do the same
-   or be added behind a feature flag.
-
-5. **Write a test** at `scripts/eval/tests/runner_<name>.sh`. Use the
-   existing [`runner_langgraph.sh`](../scripts/eval/tests/runner_langgraph.sh)
-   as a template — it stages fixtures, stubs the underlying toolchain,
-   and verifies the four subcommand traces plus attribution behaviors.
-
-6. **Add an example** under `examples/<name>-runner/` with at least one
-   case YAML so the integration test has a real fixture to point at.
-   See [`examples/langgraph-runner/`](../examples/langgraph-runner/) for
-   the canonical layout: 3 cases covering the three check patterns
-   (file/shell, jq-path-contains, output-contains).
+These CLIs run as the current user with their native credentials, settings and
+tool permissions. Only run trusted agents and cases; a working directory is not
+a security sandbox. The adapters do not enable automatic approval or bypass a
+CLI's safety controls. Codex is requested to use `workspace-write`. CLI-specific
+skill loading, plugins, tools, model names and provider support remain the
+responsibility of the selected CLI.
 
 ## The `langgraph-node` runner
 
@@ -122,9 +119,8 @@ LangGraph-specific notes for the [`langgraph-node` adapter](../scripts/eval/runn
 Two new optional top-level fields:
 
 - **`runner:`** — a string naming the active runner (e.g. `langgraph-node`).
-  Defaults to `opencode` if absent. Acts as a required-to-match guard: if
-  the case's `runner:` differs from `run.sh`'s `--runner=<name>` (or the
-  default), the case is skipped with a one-line notice.
+  If absent, uses the invocation's `--runner` or `EVAL_RUNNER`, then defaults to
+  `opencode`. A conflict with an explicit invocation selection is an error.
 
 - **`runner_config:`** — a free-form object the active adapter reads. The
   opencode runner ignores it. For `langgraph-node` the documented keys are:
@@ -133,7 +129,8 @@ Two new optional top-level fields:
   - `input` — input JSON path (relative to workdir).
   - `output` — output JSON path (relative to workdir).
 
-  Authors may add runner-specific keys; the schema is intentionally open.
+  Native CLI adapters accept only the optional `model` key; custom adapters
+  define their own configuration.
 
 For the full case-YAML reference, see the [README's "Authoring a case"
 section](../README.md#authoring-a-case).
@@ -219,14 +216,11 @@ setup, attestation/review trust, outcome semantics, limits and the live pilot.
   - `langgraph-node` — first explicit adapter; LangGraph framework.
 
 - **Unreleased source additions**:
+  - `omp`, `claude-code`, `codex` — native CLI adapters.
+  - Trusted external adapters via `EVAL_RUNNERS_DIR`.
   - `atd-sandbox` — confined differential test execution; see the discovery guide.
 
 - **Proposed** (not yet shipped):
   - `python-generic` — Python agents not built on LangGraph.
   - `http` — agents reached over HTTP (any framework with a JSON API).
   - `mcp` — Model Context Protocol agents reached over stdio or HTTP.
-
-A new adapter is a self-contained `scripts/eval/runners/<name>.sh` plus
-a `scripts/eval/tests/runner_<name>.sh` plus an
-`examples/<name>-runner/` directory. No core harness changes required
-when the contract is honored.

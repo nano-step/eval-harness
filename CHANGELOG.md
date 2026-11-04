@@ -7,6 +7,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Unreleased
 
 ### Added
+- Native OMP, Claude Code and Codex CLI runners, and trusted external adapter discovery through `EVAL_RUNNERS_DIR`.
 - Autonomous Test Discovery modules for deterministic diff/risk targeting, bounded intent-aware generation requests, untrusted candidate admission and maintained scoped Stryker mutation.
 - `atd-sandbox` runner with independent revision exports, digest-pinned Docker confinement, structured framework outcomes, SSH-signed evidence and fail-closed admission.
 - `discovery_finding` and optional `discovery_test_health` checks integrated with existing stability sampling, grading manifests, typed results, JUnit/SARIF and baseline behavior.
@@ -15,6 +16,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Optional img2threejs product evaluation using a pinned confined Playwright browser, native Three.js structure checks, GLB round-trip validation and separately approved visual baselines.
 
 ### Fixed
+- Runner preflight and per-case selection now support custom adapters without requiring OpenCode; non-OpenCode provenance no longer reports the OpenCode version.
 - Generic runner stability samples re-execute instead of regrading copied evidence; stale or failed respawns cannot appear independently reproduced.
 - Discovery confirmation preserves existing baseline failures and rejects tampering, missing identities, environment mismatches, runtime faults and unreviewed expectations.
 - Revision export/test overlays reject symlink traversal before host writes and refuse oversized blobs before buffering their contents.

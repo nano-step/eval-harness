@@ -8,6 +8,8 @@
 
 **Know whether an agent still does what you expect—and what evidence supports that decision.**
 
+**Turn your harness into a more complete, reliable product—with evidence you can trust.**
+
 eval-harness evaluates OpenCode skills and AI-agent workflows with typed checks, baseline comparisons, and evidence-backed reports. Run an agent through a runner, or grade prepared evidence without starting a model.
 
 ## Why eval-harness?
@@ -28,7 +30,7 @@ Use eval-harness when you need repeatable checks for agent behavior, a baseline 
 | **CI-ready reports** | Export JUnit XML and SARIF; use strict result gates. | Bring evaluation outcomes into existing review and CI workflows. |
 | **Autonomous Test Discovery** | Generate bounded intent-aware tests, run scoped Stryker mutation and isolated base/candidate execution, then feed findings to the existing graders. | Surface potential gaps for review; discovery gates are warn-only by default, and a generator cannot approve its own findings. |
 
-`run` selects a runner, with OpenCode as the default. The LangGraph example demonstrates the runner contract; `atd-sandbox` executes discovery tests in confined containers. `grade` accepts prepared evidence without coupling grading to the producer.
+`run` supports OpenCode (default), OMP, Claude Code, Codex and LangGraph. Trusted custom adapters can connect other agents; `atd-sandbox` executes discovery tests in confined containers. `grade` accepts prepared evidence without coupling grading to the producer.
 
 ## Install
 
@@ -55,6 +57,12 @@ export OPENCODE_SKILLS_ROOT="/path/to/skills-root"
 eval-harness run --skill=my-skill --dry-run
 eval-harness run --skill=my-skill
 ```
+
+For an installed, authenticated agent CLI, select `--runner=omp`,
+`--runner=claude-code`, or `--runner=codex` instead. These agents run with
+their native user credentials and permissions, not in a harness security
+sandbox. See the [runner guide](./docs/runners.md) for custom adapters and
+CLI-specific limitations.
 
 Use `--dry-run` to check discovery and preflight without spawning an evaluation. After reviewing a passing run, record a baseline and enable strict gates:
 
