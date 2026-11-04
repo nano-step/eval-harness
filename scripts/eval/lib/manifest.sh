@@ -72,8 +72,16 @@ capture_manifest() {
   skills_root="$(resolve_skills_root)"
   local skill_dir="$skills_root/$skill"
 
-  local opencode_version
-  opencode_version="$(opencode --version 2>/dev/null | head -1 || echo "unknown")"
+  # opencode_version and the opencode default model (EVAL_MODEL / OPENCODE_MODEL) describe the OpenCode
+  # runner. langgraph-node and atd-sandbox keep their historical fields; every other adapter (built-in
+  # agent CLIs, custom runners) must never be labelled with an OpenCode identity it did not use.
+  local runner="${EVAL_RUNNER:-opencode}"
+  local opencode_like=0
+  case "$runner" in opencode|langgraph-node|atd-sandbox) opencode_like=1 ;; esac
+  local opencode_version="none"
+  if [[ "$opencode_like" == "1" ]]; then
+    opencode_version="$(opencode --version 2>/dev/null | head -1 || echo "unknown")"
+  fi
 
   local node_version
   node_version="$(node --version 2>/dev/null || echo "unknown")"
@@ -81,7 +89,14 @@ capture_manifest() {
   local platform
   platform="$(uname -s)-$(uname -m)"
 
-  local model_id="${EVAL_CASE_MODEL:-${EVAL_MODEL:-${OPENCODE_MODEL:-unknown}}}"
+  # Other runners record only an explicitly requested model (run.sh: A/B override > case model >
+  # runner_config.model) and otherwise "unknown": the served model is never inferred.
+  local model_id
+  if [[ "$opencode_like" == "1" ]]; then
+    model_id="${EVAL_CASE_MODEL:-${EVAL_MODEL:-${OPENCODE_MODEL:-unknown}}}"
+  else
+    model_id="${EVAL_REQUESTED_MODEL:-${EVAL_AB_MODEL_OVERRIDE:-${EVAL_CASE_MODEL:-unknown}}}"
+  fi
   local prompt_sha="" rubric_sha="" tool_manifest_extra='{}' case_file_for_manifest tool_manifest_file
   case_file_for_manifest="$(printenv EVAL_CASE_FILE 2>/dev/null || echo "")"
   tool_manifest_file="$(printenv EVAL_TOOL_MANIFEST_FILE 2>/dev/null || echo "")"
@@ -119,7 +134,7 @@ capture_manifest() {
   # fields "none". Callers may override via env: EVAL_RUNNER,
   # EVAL_GRAPH_FINGERPRINT, EVAL_RUNNER_CONFIG_SHA, EVAL_LANGGRAPH_VERSION,
   # EVAL_PYTHON_VERSION.
-  local runner="${EVAL_RUNNER:-opencode}"
+  # (runner was resolved above)
   local graph_fingerprint="${EVAL_GRAPH_FINGERPRINT:-none}"
   local runner_config_sha="${EVAL_RUNNER_CONFIG_SHA:-none}"
   local langgraph_version="${EVAL_LANGGRAPH_VERSION:-none}"

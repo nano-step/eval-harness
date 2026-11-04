@@ -120,7 +120,7 @@ mode="$(yq -r '.mode // "deterministic"' "$case_file" 2>/dev/null || echo determ
         artifacts:$artifacts,
         environment_manifest:({path:"env-manifest.json",status:$env_status} + (if $env_status=="available" then {sha256:$env_sha} else {} end))
       } + (if $stab==null then {} else {stability:$stab} end)),
-      provenance:{runner:{name:($env.runner // "opencode"),version:(if $env.runner=="langgraph-node" then ($env.langgraph_version // "unknown") else ($env.opencode_version // "unknown") end)},model_id:($env.model_id // "unknown"),manifest_schema:($env.schema_version // null)}
+      provenance:{runner:{name:($env.runner // "opencode"),version:(($env.runner // "opencode") as $r | if $r=="opencode" then ($env.opencode_version // "unknown") elif $r=="langgraph-node" then ($env.langgraph_version // "unknown") else ($env.runner_version // "unknown") end)},model_id:($env.model_id // "unknown"),manifest_schema:($env.schema_version // null)}
     }' > "$out"
 }
 

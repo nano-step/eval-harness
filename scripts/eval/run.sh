@@ -66,8 +66,9 @@ Options:
   --debug                 Verbose log + keep sandbox dirs
   --pin-env=baseline      Re-run with baseline's env-manifest pinned
   --stability-samples=N   On FAIL re-run case N-1 more times; diagnostic only (default 1)
-  --runner=<name>         Runner adapter: opencode (default) | langgraph-node | <custom>
-                          A case YAML's runner must match this if both are set.
+  --runner=<name>         Runner adapter: opencode (default) | omp | claude-code | codex | langgraph-node |
+                          atd-sandbox | <custom adapter in EVAL_RUNNERS_DIR>
+                          A case YAML's runner must match this if both are set; it applies to cases without one.
   --max-regressions=N     Blocking regression count threshold (optional)
   --report=<junit|sarif>:<path>  Write a JUnit XML or SARIF report (repeatable)
   --dry-run               Print plan; don't spawn opencode
@@ -85,7 +86,8 @@ Environment:
   EVAL_BUDGET_USD          Optional daily hard cap (unset disables the cap)
   EVAL_MAX_SECONDS         Per-case timeout (default: 180)
   EVAL_MODEL               Override model (default: anthropic/claude-haiku-3-5)
-  EVAL_RUNNER              Default runner adapter (overridden per-case by case YAML `runner:`)
+  EVAL_RUNNER              Default runner adapter for cases without a `runner:` (a conflicting case `runner:` is an ERROR)
+  EVAL_RUNNERS_DIR         Directory of trusted custom runner adapters <name>.sh (default: scripts/eval/runners)
   EVAL_BYPASS              Set to 1 to skip evals (logged to history.ndjson)
 
 Exit codes:
@@ -172,6 +174,46 @@ apply_mode_defaults() {
   esac
 }
 
+# Custom and built-in agent adapters (anything that is not opencode, langgraph-node or
+# atd-sandbox): bounded by EVAL_MAX_SECONDS like opencode (124 on timeout). The adapter's stdout is
+# diverted to stderr so it cannot corrupt the exit code this function prints on stdout.
+_spawn_custom_runner() {
+  local path rc=0
+  if ! path="$(resolve_runner "$EFFECTIVE_RUNNER")"; then echo 1; return 0; fi
+  EVAL_HARNESS_RUNNING=1 run_with_timeout "${EVAL_MAX_SECONDS:-180}" bash "$path" spawn "$@" >&2 || rc=$?
+  echo "$rc"
+}
+
+# Lifecycle hooks (prepare / teardown) run only for adapter-file runners without a dedicated flow.
+# langgraph-node and atd-sandbox keep their existing behavior; opencode has no adapter (KTD2).
+_runner_has_lifecycle() {
+  case "$EFFECTIVE_RUNNER" in
+    opencode|langgraph-node|atd-sandbox) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Adapter-file runners follow the generic contract: a non-zero spawn exit is a FAILED run, so its
+# (possibly partial) transcript and outputs are never graded; the case/sample is an ERROR. The
+# historical opencode / langgraph-node / atd-sandbox semantics (non-zero with a transcript is graded)
+# are deliberately untouched.
+_runner_strict_spawn() { _runner_has_lifecycle; }
+
+# Usage: _runner_prepare <workdir>   — returns the adapter's exit code (0 when there is no lifecycle).
+_runner_prepare() {
+  _runner_has_lifecycle || return 0
+  dispatch_runner prepare "$EFFECTIVE_RUNNER" "$1" "$runner_config_json" >&2
+}
+
+# Usage: _runner_teardown <workdir>  — best effort: a teardown failure warns but never changes a verdict.
+_runner_teardown() {
+  _runner_has_lifecycle || return 0
+  if ! dispatch_runner teardown "$EFFECTIVE_RUNNER" "$1" "$runner_config_json" >&2; then
+    echo "[eval-harness] WARNING: runner=$EFFECTIVE_RUNNER teardown failed for $1 (ignored)" >&2
+  fi
+  return 0
+}
+
 # Dispatch one case invocation through the selected runner. Each adapter owns its argv contract.
 _spawn_case_runner() {
   local prompt="$1" workdir="$2" sandbox="$3" transcript="$4"; shift 4
@@ -184,8 +226,10 @@ _spawn_case_runner() {
       input_file="$(printf '%s' "$runner_config_json" | jq -r '.input // "input.json"')"
       output_file="$(printf '%s' "$runner_config_json" | jq -r '.output // "output.json"')"
       spawn_runner langgraph-node "$workdir" "$workdir/$input_file" "$workdir/$output_file" "$transcript" "$runner_config_json" ;;
+    atd-sandbox)
+      spawn_runner atd-sandbox "$workdir" "$runner_config_json" "$transcript" "$prompt" ;;
     *)
-      spawn_runner "$EFFECTIVE_RUNNER" "$workdir" "$runner_config_json" "$transcript" "$prompt" ;;
+      _spawn_custom_runner "$workdir" "$runner_config_json" "$transcript" "$prompt" ;;
   esac
 }
 
@@ -258,9 +302,11 @@ esac
 # preflight for each. This handles mixed-runner case sets where the CLI
 # didn't pin --runner: e.g., one opencode case + one langgraph-node case
 # should preflight both, not fail on the first preflight_check.
-# NOTE: this must happen *before* CASE_FILES is defined below (lines
-# 218-222). Without this ordering, _NEEDED_RUNNERS is empty and preflight
-# for every runner (including the default opencode) is silently bypassed.
+# A case that names no runner uses the CLI/EVAL_RUNNER selection (RUNNER_OPT),
+# falling back to opencode, so the selected runner is preflighted too.
+# NOTE: this must happen *before* CASE_FILES is defined below. Without this
+# ordering, _NEEDED_RUNNERS is empty and preflight for every runner (including
+# the default opencode) is silently bypassed.
 _NEEDED_RUNNERS=""
 add_needed_runner() {
   local candidate="$1"
@@ -269,6 +315,7 @@ add_needed_runner() {
   esac
   _NEEDED_RUNNERS="${_NEEDED_RUNNERS}${candidate}"$'\n'
 }
+if [[ -n "$RUNNER_OPT" ]]; then add_needed_runner "$RUNNER_OPT"; fi
 if [[ -n "${CASE_ID:-}" ]]; then
   _PRE_CASES_DIR="$(resolve_skills_root)/$SKILL/evals/cases"
   if [[ -f "$_PRE_CASES_DIR/$CASE_ID.yaml" ]]; then
@@ -286,7 +333,8 @@ fi
 while IFS= read -r _cf; do
   [[ -n "$_cf" ]] || continue
   [[ -f "$_cf" ]] || continue
-  _cr="$(yq -r '.runner // "opencode"' "$_cf" 2>/dev/null || echo "opencode")"
+  _cr="$(yq -r '.runner // ""' "$_cf" 2>/dev/null || echo "")"
+  [[ -n "$_cr" ]] || _cr="${RUNNER_OPT:-opencode}"
   add_needed_runner "$_cr"
 done <<EOF
 $_PRE_CASE_FILES
@@ -298,8 +346,9 @@ while IFS= read -r _r; do
     langgraph-node) if ! preflight_check_langgraph; then exit 13; fi ;;
     atd-sandbox)    if ! preflight_check_atd_sandbox; then exit 13; fi ;;
     *)
-      echo "[eval-harness] unknown runner '$_r' in case files" >&2
-      exit 13
+      # Trusted resolution only: path-safe name + registry/$EVAL_RUNNERS_DIR adapter file;
+      # omp / claude-code / codex additionally need just their own binary on PATH.
+      if ! preflight_check_adapter_runner "$_r"; then exit 13; fi
       ;;
   esac
 done <<EOF
@@ -406,18 +455,20 @@ for case_file in "${CASE_FILES[@]}"; do
     unset EVAL_CASE_MODEL
   fi
 
-  # Per-invocation runner resolution: CLI selection must agree with case runner.
+  # Per-invocation runner resolution. The CLI/EVAL_RUNNER selection (RUNNER_OPT, captured once
+  # before the loop) must agree with a case-declared runner, and applies when a case names none.
+  # EVAL_RUNNER is exported per case below, so it is never read back as the CLI selection.
   case_runner="$(yq -r '.runner // ""' "$case_file" 2>/dev/null || echo "")"
   if [[ -n "$case_runner" ]]; then
-    if [[ -n "${EVAL_RUNNER:-}" && "${EVAL_RUNNER}" != "$case_runner" ]]; then
-      actual="runner mismatch (CLI=$EVAL_RUNNER case=$case_runner)"
+    if [[ -n "$RUNNER_OPT" && "$RUNNER_OPT" != "$case_runner" ]]; then
+      actual="runner mismatch (CLI=$RUNNER_OPT case=$case_runner)"
       case_results+=("$(_case_error_result "$cid" "CLI and case runner agree" "$actual" "runner selection conflict")")
       echo "[eval-harness] case $cid: $actual" >&2
       continue
     fi
     EFFECTIVE_RUNNER="$case_runner"
-  elif [[ -n "${EVAL_RUNNER:-}" ]]; then
-    EFFECTIVE_RUNNER="$EVAL_RUNNER"
+  elif [[ -n "$RUNNER_OPT" ]]; then
+    EFFECTIVE_RUNNER="$RUNNER_OPT"
   else
     EFFECTIVE_RUNNER="opencode"
   fi
@@ -438,8 +489,14 @@ for case_file in "${CASE_FILES[@]}"; do
       fi
       ;;
     *)
-      case_results+=("$(_case_error_result "$cid" "supported runner" "unknown runner '$EFFECTIVE_RUNNER'" "runner adapter is not registered")")
-      continue
+      if ! resolve_runner "$EFFECTIVE_RUNNER" >/dev/null 2>&1; then
+        case_results+=("$(_case_error_result "$cid" "supported runner" "unknown runner '$EFFECTIVE_RUNNER'" "runner adapter is not registered or its name is not path-safe")")
+        continue
+      fi
+      if ! preflight_check_adapter_runner "$EFFECTIVE_RUNNER"; then
+        case_results+=("$(_case_error_result "$cid" "runner preflight succeeds" "preflight failed for runner=$EFFECTIVE_RUNNER" "the agent binary this runner drives is not on PATH")")
+        continue
+      fi
       ;;
   esac
 
@@ -561,14 +618,23 @@ for case_file in "${CASE_FILES[@]}"; do
   runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
   EVAL_RUNNER_CONFIG_SHA="$(printf '%s' "$runner_config_json" | portable_sha256_stdin | awk '{print $1}')"
   EVAL_GRAPH_FINGERPRINT="none"
-  if [[ "$EFFECTIVE_RUNNER" == "langgraph-node" || "$EFFECTIVE_RUNNER" == "atd-sandbox" ]]; then
-    EVAL_GRAPH_FINGERPRINT="$(dispatch_runner fingerprint "$EFFECTIVE_RUNNER" "$workdir" "$runner_config_json" 2>/dev/null || echo none)"
-    [[ -n "$EVAL_GRAPH_FINGERPRINT" ]] || EVAL_GRAPH_FINGERPRINT="none"
+  if [[ "$EFFECTIVE_RUNNER" != "opencode" ]]; then
+    EVAL_GRAPH_FINGERPRINT="$(runner_fingerprint "$EFFECTIVE_RUNNER" "$workdir" "$runner_config_json")"
   fi
   export EVAL_RUNNER_CONFIG_SHA EVAL_GRAPH_FINGERPRINT
+  # Explicitly requested model identity only (A/B override > case `model:` — both already folded into
+  # EVAL_CASE_MODEL above — > runner_config.model). Recorded per case for runners that do not use the
+  # opencode/EVAL_MODEL default; absent means "unknown". Always reset so it never leaks between cases.
+  _requested_model="${EVAL_CASE_MODEL:-}"
+  if [[ -z "$_requested_model" ]]; then
+    _requested_model="$(printf '%s' "$runner_config_json" | jq -r '(.model? // "") | if type=="string" then . else "" end' 2>/dev/null || echo "")"
+  fi
+  if [[ -n "$_requested_model" ]]; then export EVAL_REQUESTED_MODEL="$_requested_model"; else unset EVAL_REQUESTED_MODEL; fi
+  unset _requested_model
   capture_manifest "$SKILL" "$per_case_dir/env-manifest.json"
 
 
+  primary_prepared=0
   if [[ "$case_mode" == "stochastic" ]]; then
     st_samples="$(yq -r '.samples // 5' "$case_file" 2>/dev/null || echo 5)"
     st_threshold="$(yq -r '.pass_threshold // 0' "$case_file" 2>/dev/null || echo 0)"
@@ -617,9 +683,17 @@ for case_file in "${CASE_FILES[@]}"; do
         echo "[eval-harness] WARNING: opencode CLI not on PATH — emitting stub transcript for offline scoring" >&2
         : > "$st_tr"
       else
-        sample_exit_code="$(EVAL_TEMPERATURE="$st_temp" _spawn_case_runner "$prompt" "$st_sd/workdir" "$st_sd/sandbox" "$st_tr" "${skills_loaded[@]}")"
+        sample_prepare_rc=0
+        _runner_prepare "$st_sd/workdir" || sample_prepare_rc=$?
+        if [[ "$sample_prepare_rc" != "0" ]]; then
+          echo "[eval-harness] case $cid: runner=$EFFECTIVE_RUNNER prepare failed for sample $s (exit $sample_prepare_rc)" >&2
+          : > "$st_tr"
+          sample_exit_code="$sample_prepare_rc"
+        else
+          sample_exit_code="$(EVAL_TEMPERATURE="$st_temp" _spawn_case_runner "$prompt" "$st_sd/workdir" "$st_sd/sandbox" "$st_tr" "${skills_loaded[@]}")"
+        fi
       fi
-      if [[ "$sample_exit_code" == "124" || ( "$sample_exit_code" != "0" && ! -s "$st_tr" ) ]]; then
+      if [[ "$sample_exit_code" == "124" ]] || { [[ "$sample_exit_code" != "0" ]] && { [[ ! -s "$st_tr" ]] || _runner_strict_spawn; }; }; then
         jq -n --arg cid "$cid" --arg code "$sample_exit_code" --arg runner "$EFFECTIVE_RUNNER" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
           passed:false,status:"ERROR",evaluation_type:$et,compare_to_baseline:$cmp,total:0,pass_count:0,fail_count:1,
           checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("sample_spawn:"+$cid),expected:($runner+" completes with sample evidence"),actual:($runner+" exit "+$code),diff_hint:"sample runner failed before producing evidence"}],quality:{dimensions:{},aggregate:null}
@@ -627,6 +701,7 @@ for case_file in "${CASE_FILES[@]}"; do
       else
         run_all_checks "$case_file" "$st_sd/workdir" "$st_tr" "$st_sd/checks.json"
       fi
+      _runner_teardown "$st_sd/workdir"
       sample_status="$(jq -r '.status // (if .passed==true then "PASS" else "FAIL" end)' "$st_sd/checks.json" 2>/dev/null || echo ERROR)"
       case "$sample_status" in
         PASS) st_pass=$((st_pass+1)); st_valid=$((st_valid+1)) ;;
@@ -680,20 +755,42 @@ for case_file in "${CASE_FILES[@]}"; do
       : > "$transcript"
       exit_code=0
     else
-      exit_code="$( _spawn_case_runner "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}" )"
+      primary_prepared=1
+      prepare_rc=0
+      _runner_prepare "$workdir" || prepare_rc=$?
+      if [[ "$prepare_rc" != "0" ]]; then
+        echo "[eval-harness] case $cid: runner=$EFFECTIVE_RUNNER prepare failed (exit $prepare_rc)" >&2
+        : > "$transcript"
+        exit_code="$prepare_rc"
+      else
+        exit_code="$( _spawn_case_runner "$prompt" "$workdir" "$sandbox" "$transcript" "${skills_loaded[@]}" )"
+      fi
     fi
-    if [[ "$exit_code" == "124" ]]; then
+    if [[ "$primary_prepared" == "1" && "$prepare_rc" != "0" ]]; then
+      jq -n --arg cid "$cid" --arg runner "$EFFECTIVE_RUNNER" --arg code "$prepare_rc" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
+        passed:false,status:"ERROR",evaluation_type:$et,compare_to_baseline:$cmp,total:0,pass_count:0,fail_count:1,
+        checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("prepare_failed:"+$cid),expected:($runner+" prepare succeeds"),actual:($runner+" prepare exit "+$code),diff_hint:($runner+" could not stage the case; the agent was not run")}],quality:{dimensions:{},aggregate:null}
+      }' > "$per_case_dir/checks.json"
+    elif [[ "$exit_code" == "124" ]]; then
       max_seconds="$(printenv EVAL_MAX_SECONDS 2>/dev/null || echo 180)"
       echo "[eval-harness] case $cid: runner=$EFFECTIVE_RUNNER timed out after $max_seconds (exit 124)" >&2
       jq -n --arg cid "$cid" --arg runner "$EFFECTIVE_RUNNER" --arg seconds "$max_seconds" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
         passed:false,status:"ERROR",evaluation_type:$et,compare_to_baseline:$cmp,total:0,pass_count:0,fail_count:1,
         checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("timeout:"+$cid),expected:($runner+" completes within "+$seconds),actual:"timeout (exit 124)",diff_hint:($runner+" was killed by timeout") }],quality:{dimensions:{},aggregate:null}
       }' > "$per_case_dir/checks.json"
-    elif [[ "$exit_code" != "0" ]] && [[ ! -s "$transcript" ]]; then
-      echo "[eval-harness] case $cid: runner=$EFFECTIVE_RUNNER exited $exit_code with empty transcript" >&2
-      jq -n --arg cid "$cid" --arg runner "$EFFECTIVE_RUNNER" --arg actual "exit $exit_code, empty transcript" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
+    elif [[ "$exit_code" != "0" ]] && { [[ ! -s "$transcript" ]] || _runner_strict_spawn; }; then
+      spawn_expected="$EFFECTIVE_RUNNER produces transcript"
+      spawn_actual="exit $exit_code, empty transcript"
+      spawn_hint="$EFFECTIVE_RUNNER exited non-zero and wrote nothing"
+      if [[ -s "$transcript" ]]; then
+        spawn_expected="$EFFECTIVE_RUNNER exits 0"
+        spawn_actual="exit $exit_code with a partial transcript"
+        spawn_hint="$EFFECTIVE_RUNNER exited non-zero; the transcript of a failed run is never accepted as evidence"
+      fi
+      echo "[eval-harness] case $cid: runner=$EFFECTIVE_RUNNER exited $exit_code ($spawn_actual)" >&2
+      jq -n --arg cid "$cid" --arg runner "$EFFECTIVE_RUNNER" --arg expected "$spawn_expected" --arg actual "$spawn_actual" --arg hint "$spawn_hint" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
         passed:false,status:"ERROR",evaluation_type:$et,compare_to_baseline:$cmp,total:0,pass_count:0,fail_count:1,
-        checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("spawn_failed:"+$cid),expected:($runner+" produces transcript"),actual:$actual,diff_hint:($runner+" exited non-zero and wrote nothing")}],quality:{dimensions:{},aggregate:null}
+        checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("spawn_failed:"+$cid),expected:$expected,actual:$actual,diff_hint:$hint}],quality:{dimensions:{},aggregate:null}
       }' > "$per_case_dir/checks.json"
     else
       run_all_checks "$case_file" "$workdir" "$transcript" "$per_case_dir/checks.json"
@@ -729,8 +826,8 @@ for case_file in "${CASE_FILES[@]}"; do
           runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
           spawn_runner langgraph-node "$sample_workdir" "$sample_workdir/$input_file" "$sample_workdir/$output_file" "$sample_transcript" "$runner_config_json" >/dev/null
           ;;
-        *)
-          # Generic adapters (atd-sandbox) are executed AGAIN in a fresh sandbox. The copied workdir's
+        atd-sandbox)
+          # atd-sandbox is executed AGAIN in a fresh sandbox. The copied workdir's
           # evidence is never re-graded: stale outputs are removed and a failed respawn becomes ERROR.
           rm -rf "$sample_workdir/atd-out"
           : > "$sample_transcript"
@@ -738,6 +835,22 @@ for case_file in "${CASE_FILES[@]}"; do
           if [[ "$sample_exit_code" == "124" || ( "$sample_exit_code" != "0" && ! -s "$sample_transcript" ) ]]; then
             sample_spawn_failed=1
             rm -rf "$sample_workdir/atd-out"
+          fi
+          ;;
+        *)
+          # Custom / built-in agent adapters: full prepare -> spawn -> teardown on the sample workdir,
+          # never a re-grade of the copied evidence. A failed prepare or respawn becomes ERROR.
+          : > "$sample_transcript"
+          sample_prepare_rc=0
+          _runner_prepare "$sample_workdir" || sample_prepare_rc=$?
+          if [[ "$sample_prepare_rc" != "0" ]]; then
+            sample_exit_code="$sample_prepare_rc"
+            sample_spawn_failed=1
+          else
+            sample_exit_code="$(_spawn_case_runner "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}")"
+            if [[ "$sample_exit_code" != "0" ]]; then
+              sample_spawn_failed=1
+            fi
           fi
           ;;
       esac
@@ -750,6 +863,7 @@ for case_file in "${CASE_FILES[@]}"; do
       else
         run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
       fi
+      _runner_teardown "$sample_workdir"
       hashes+=("$(hash_checks "$sample_dir/checks.json")")
       s=$((s+1))
     done
@@ -769,6 +883,7 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
   fi
   echo "$stability_json" > "$per_case_dir/stability.json"
+  if [[ "$primary_prepared" == "1" ]]; then _runner_teardown "$workdir"; fi
   write_case_grading_manifest "$per_case_dir/case.yaml" "$workdir" "$transcript" "$per_case_dir/env-manifest.json" "$RUN_ID" "$cid" "$per_case_dir/grading-manifest.json"
 
   if ! command -v flock >/dev/null 2>&1; then
@@ -787,6 +902,9 @@ for case_file in "${CASE_FILES[@]}"; do
   case_status="$(printf '%s' "$case_result" | jq -r '.status // (if .passed then "PASS" else "FAIL" end)')"
   echo "[eval-harness] Case $i/${#CASE_FILES[@]} $cid $case_status"
 done
+# EVAL_RUNNER was exported per case for manifests and adapters; restore the CLI selection (or none).
+if [[ -n "$RUNNER_OPT" ]]; then export EVAL_RUNNER="$RUNNER_OPT"; else unset EVAL_RUNNER; fi
+unset EVAL_REQUESTED_MODEL
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "[eval-harness] dry-run complete"

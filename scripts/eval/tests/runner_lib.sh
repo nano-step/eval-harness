@@ -80,6 +80,28 @@ chmod +x "$TMP/fs-runner.sh"
 got="$(dispatch_runner fingerprint fs-runner)"
 [[ "$got" == "fingerprint-from-fs" ]] && ok "dispatch: filesystem fallback works" || fail "dispatch fs-runner='$got'"
 
+# 6b. EVAL_RUNNERS_DIR adds/overrides adapters; it never hides the shipped ones.
+SHIPPED="$(cd "$LIB/.." && pwd)/runners"
+got="$(resolve_runner fs-runner)"
+[[ "$got" == "$TMP/fs-runner.sh" ]] && ok "resolve: override-dir adapter found" || fail "resolve fs-runner='$got'"
+for shipped_name in langgraph-node atd-sandbox omp claude-code codex; do
+  got="$(resolve_runner "$shipped_name")"
+  [[ "$got" == "$SHIPPED/$shipped_name.sh" ]] && ok "resolve: shipped '$shipped_name' still found with EVAL_RUNNERS_DIR set" || fail "resolve $shipped_name='$got'"
+done
+if resolve_runner nonexistent-runner-xyz >/dev/null 2>&1; then
+  fail "resolve: nonexistent runner must still fail with EVAL_RUNNERS_DIR set"
+else
+  ok "resolve: nonexistent runner still fails with EVAL_RUNNERS_DIR set"
+fi
+cp "$TMP/fs-runner.sh" "$TMP/omp.sh"
+got="$(resolve_runner omp)"
+[[ "$got" == "$TMP/omp.sh" ]] && ok "resolve: trusted override takes precedence over the shipped adapter" || fail "resolve omp override='$got'"
+out="$(list_runners)"
+[[ "$(echo "$out" | head -1)" == "opencode" ]] && ok "list_runners: opencode first with override dir" || fail "list_runners first='$(echo "$out" | head -1)'"
+echo "$out" | grep -qx fs-runner && echo "$out" | grep -qx langgraph-node && ok "list_runners: override and shipped adapters both listed" || fail "list_runners missing override/shipped"
+[[ "$(echo "$out" | grep -cx omp)" == "1" ]] && ok "list_runners: duplicate name listed once" || fail "list_runners omp count=$(echo "$out" | grep -cx omp)"
+rm -f "$TMP/omp.sh"
+
 # 7. unknown subcommand rejected
 set +e
 bash -c "source '$LIB/runner.sh'; dispatch_runner bogus opencode" >/dev/null 2>&1

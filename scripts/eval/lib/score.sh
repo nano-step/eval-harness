@@ -273,6 +273,61 @@ score_file_exists() {
   }'
 }
 
+# Usage: _score_transcript_scan <needle> <transcript>
+# Finds the first transcript line containing <needle> and sets (current shell):
+#   _SCORE_SCAN_STATUS  found | absent | malformed
+#   _SCORE_SCAN_LINE    1-based JSONL line of the first match (found) or first bad line (malformed)
+#   _SCORE_SCAN_REASON  explanation (malformed only)
+# Legacy / OpenCode / custom transcripts: raw `grep -n -F` over the file, unchanged.
+# Normalized agent-CLI transcripts (runners omp, claude-code, codex; see lib/agent_cli.sh)
+# are recognised by an explicit `"runner":"omp|claude-code|codex"` JSON field. For those the
+# needle is matched case-sensitively and literally against the DECODED `.content` of
+# `{"event":"result","type":"assistant"}` events only, so runner metadata (runner name, model,
+# timestamp) never matches and JSON escaping (quotes, newlines) cannot hide or fake a match.
+# When EVAL_RUNNER (exported by run.sh) is omp, claude-code or codex, validation is forced
+# regardless of any marker, and each event's runner must equal EVAL_RUNNER: a truncated line
+# that lost its runner field can never fall through to the raw grep. Without EVAL_RUNNER
+# (offline replay/regrade) the marker autodetection above applies.
+# Fail closed: once a transcript is treated as a CLI transcript, every line must be a valid
+# normalized event; anything else yields status=malformed (callers report ERROR, never PASS).
+_score_transcript_scan() {
+  local needle="$1" transcript="$2" match res
+  _SCORE_SCAN_STATUS="absent"; _SCORE_SCAN_LINE=""; _SCORE_SCAN_REASON=""
+  [[ -f "$transcript" ]] || return 0
+  local forced; forced="$(printenv EVAL_RUNNER 2>/dev/null || true)"
+  case "$forced" in omp|claude-code|codex) ;; *) forced="" ;; esac
+  if [[ -n "$forced" ]] || grep -q -E '"runner"[[:space:]]*:[[:space:]]*"(omp|claude-code|codex)"' "$transcript" 2>/dev/null; then
+    if ! res="$(jq -Rn --arg needle "$needle" --arg forced "$forced" '
+      def valid: type == "object"
+        and (.runner | IN("omp","claude-code","codex"))
+        and ($forced == "" or .runner == $forced)
+        and .event == "result" and .type == "assistant"
+        and (.content | type == "string" and length > 0);
+      [inputs | (try fromjson catch null)] as $objs
+      | ([range(0; $objs | length) | select(($objs[.] | valid) | not)]) as $bad
+      | if ($bad | length) > 0 then
+          {status: "malformed", line: ($bad[0] + 1),
+           reason: "line is not a valid normalized CLI result event (runner omp|claude-code|codex, event result, type assistant, non-empty string content)"}
+        else
+          ([range(0; $objs | length) | select($objs[.].content | contains($needle))]) as $hit
+          | if ($hit | length) > 0 then {status: "found", line: ($hit[0] + 1)} else {status: "absent"} end
+        end' "$transcript" 2>/dev/null)"; then
+      _SCORE_SCAN_STATUS="malformed"; _SCORE_SCAN_LINE="0"; _SCORE_SCAN_REASON="transcript could not be decoded as JSONL"
+      return 0
+    fi
+    _SCORE_SCAN_STATUS="$(printf '%s' "$res" | jq -r '.status')"
+    _SCORE_SCAN_LINE="$(printf '%s' "$res" | jq -r '.line // ""')"
+    _SCORE_SCAN_REASON="$(printf '%s' "$res" | jq -r '.reason // ""')"
+    return 0
+  fi
+  match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
+  if [[ -n "$match" ]]; then
+    _SCORE_SCAN_STATUS="found"
+    _SCORE_SCAN_LINE="${match%%:*}"
+  fi
+  return 0
+}
+
 score_output_contains() {
   local check_file="$1"; local transcript="$2"
   local needle; needle="$(yq -r '.value' "$check_file")"
@@ -280,14 +335,15 @@ score_output_contains() {
   local passed=false
   local line_no=""
   local end_line=""
-  if [[ -f "$transcript" ]]; then
-    local match
-    match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
-    if [[ -n "$match" ]]; then
-      passed=true
-      line_no="${match%%:*}"
-      end_line="$line_no"
-    fi
+  _score_transcript_scan "$needle" "$transcript"
+  if [[ "$_SCORE_SCAN_STATUS" == "malformed" ]]; then
+    _score_check_error output_contains "$needle" "$needle" "malformed CLI transcript" "cannot verify presence: $_SCORE_SCAN_REASON (line $_SCORE_SCAN_LINE of $transcript)"
+    return 0
+  fi
+  if [[ "$_SCORE_SCAN_STATUS" == "found" ]]; then
+    passed=true
+    line_no="$_SCORE_SCAN_LINE"
+    end_line="$line_no"
   fi
 
   jq -n \
@@ -383,11 +439,14 @@ score_output_not_contains() {
 
   local passed=true
   local line_no=""
-  local match
-  match="$(grep -n -F "$needle" "$transcript" | head -1 || true)"
-  if [[ -n "$match" ]]; then
+  _score_transcript_scan "$needle" "$transcript"
+  if [[ "$_SCORE_SCAN_STATUS" == "malformed" ]]; then
+    _score_check_error output_not_contains "$needle" "absence of $needle" "malformed CLI transcript" "cannot verify absence: $_SCORE_SCAN_REASON (line $_SCORE_SCAN_LINE of $transcript)"
+    return 0
+  fi
+  if [[ "$_SCORE_SCAN_STATUS" == "found" ]]; then
     passed=false
-    line_no="${match%%:*}"
+    line_no="$_SCORE_SCAN_LINE"
   fi
 
   jq -n \
@@ -499,7 +558,7 @@ run_all_checks() {
     }' > "$out"
 }
 
-export -f run_check run_all_checks score_shell score_jq_path_contains score_file_exists score_output_contains score_output_not_contains score_metric_score score_trajectory score_human_review decorate_check_result score_discovery_finding score_discovery_test_health score_discovery_review
+export -f run_check run_all_checks score_shell score_jq_path_contains score_file_exists _score_transcript_scan score_output_contains score_output_not_contains score_metric_score score_trajectory score_human_review decorate_check_result score_discovery_finding score_discovery_test_health score_discovery_review
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
