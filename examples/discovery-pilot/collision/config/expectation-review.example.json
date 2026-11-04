@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "verdict": "PASS",
+  "reviewer": "operator-name",
+  "rubric_version": "atd-expectation-review/v1",
+  "timestamp": "2026-11-03T00:00:00Z",
+  "rationale": "The test asserts that rectangles touching only along an edge do not overlap, which is what the SPEC.md 'Overlap' section requires.",
+  "candidateId": "<candidate id from the round's review template>",
+  "testSha256": "<64 hex from the template>",
+  "specSha256": "<64 hex from the template>",
+  "candidateManifestSha256": "<64 hex from the template>"
+}

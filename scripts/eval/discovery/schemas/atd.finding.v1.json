@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "atd.finding.v1",
+  "title": "atd.finding/v1 — normalized discovery finding (results.json cases[].discovery)",
+  "description": "Emitted by classify.mjs and attached by build_case_result / grade.sh. null in cases[].discovery means PASS->PASS (no observed regression, never a claim of correctness). Additive: readers MUST ignore unknown fields. baseResult/candidateResult/environmentEqual are null when evidence is unavailable or invalid. VERIFIED_REGRESSION requires stability.state=verified (>=3 identical, fresh, authenticated executions, stability bound by the grading manifest) AND requirementSupported=true (exact spec quote + operator review bound to attested hashes). An exact quote alone is only a link, not semantic proof.",
+  "type": "object",
+  "required": ["schema", "findingId", "candidateId", "classification", "severity", "matrix", "reproducible", "finalized", "evidenceStatus", "requirementSupported", "evidenceUris", "explanation", "reproducer", "filter", "attestation", "stability", "findingSha256"],
+  "properties": {
+    "schema": { "const": "atd.finding/v1" },
+    "findingId": { "type": "string", "pattern": "^F-[0-9a-f]{16}$" },
+    "runId": { "type": ["string", "null"] },
+    "caseId": { "type": ["string", "null"] },
+    "candidateId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$|^unknown$" },
+    "classification": { "enum": ["VERIFIED_REGRESSION", "SUSPECTED_REGRESSION", "EXPECTED_CHANGE", "EXISTING_FAILURE", "INCONCLUSIVE"] },
+    "severity": { "enum": ["low", "medium", "high"] },
+    "targetFile": { "type": "string" },
+    "testFile": { "type": "string" },
+    "matrix": { "enum": ["PASS->PASS", "PASS->FAIL", "FAIL->FAIL", "FAIL->PASS", "ERROR", null] },
+    "baseResult": { "enum": ["pass", "fail", "error", null] },
+    "candidateResult": { "enum": ["pass", "fail", "error", null] },
+    "reproducible": { "type": "boolean", "description": "stability performed, byte-identical, >=3 samples, every sample re-authenticated" },
+    "finalized": { "type": "boolean", "description": "false only for the pre-sampling score phase; cases[].discovery is always finalized" },
+    "evidenceStatus": { "enum": ["valid", "unavailable", "invalid"] },
+    "environmentEqual": { "type": ["boolean", "null"] },
+    "requirementLink": {
+      "type": ["object", "null"],
+      "properties": { "exactQuote": { "type": "boolean" }, "reason": { "type": "string" } }
+    },
+    "semanticReview": {
+      "type": ["object", "null"],
+      "properties": {
+        "status": { "enum": ["approved", "rejected", "missing", "invalid"] },
+        "reason": { "type": "string" },
+        "reviewer": { "type": "string" },
+        "rubricVersion": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "reviewSha256": { "type": "string" }
+      }
+    },
+    "requirementSupported": { "type": "boolean" },
+    "requirementReason": { "type": ["string", "null"] },
+    "evidenceUris": { "type": "array", "items": { "type": "string" }, "description": "run-dir-relative paths; each is also bound by the grading manifest" },
+    "sourceCommit": { "type": "string" },
+    "candidateCommit": { "type": "string" },
+    "explanation": { "type": "string" },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "reproducer": {
+      "type": "object",
+      "properties": {
+        "imageDigest": { "type": "string" },
+        "revision": { "type": "string" },
+        "testFile": { "type": "string" },
+        "testSha256": { "type": "string" },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "seed": { "type": ["integer", "null"] }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "required": ["stageA"],
+      "properties": {
+        "stageA": {
+          "type": "object",
+          "required": ["passed", "rules"],
+          "properties": {
+            "passed": { "type": "boolean" },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "outcome"],
+                "properties": { "id": { "type": "string" }, "outcome": { "enum": ["pass", "reject", "downgrade"] } }
+              }
+            }
+          }
+        },
+        "stageB": {
+          "type": "object",
+          "description": "optional llm_judge review; supporting only, never changes the classification",
+          "properties": {
+            "checkId": { "type": ["string", "null"] },
+            "majority": { "enum": ["PASS", "FAIL", null] },
+            "pass": { "type": "integer" },
+            "fail": { "type": "integer" },
+            "nulls": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": ["string", "null"] },
+        "trust": { "enum": ["ci-secret", "separate-user", "local-same-user", null] }
+      }
+    },
+    "stability": {
+      "type": "object",
+      "properties": {
+        "performed": { "type": "boolean" },
+        "bound": { "type": "boolean", "description": "stability metadata and per-run checks are bound by the grading manifest" },
+        "byteIdentical": { "type": ["boolean", "null"] },
+        "samples": { "type": "integer" },
+        "observedSamples": { "type": "integer" },
+        "executionIds": { "type": "array", "items": { "type": "string" } },
+        "state": { "enum": ["verified", "not_sampled", "unbound", "flaky", "incomplete", "reused", "tampered", "invalid_sample", "n/a"] }
+      }
+    },
+    "health": {
+      "type": "object",
+      "description": "optional discovery_test_health: did the generated test pass on base?",
+      "properties": {
+        "checkId": { "type": "string" },
+        "status": { "type": "string" },
+        "baseResult": { "enum": ["pass", "fail", "error", null] },
+        "healthy": { "type": ["boolean", "null"] }
+      }
+    },
+    "gradingManifest": {
+      "type": "object",
+      "properties": { "path": { "type": "string" }, "sha256": { "type": "string" } }
+    },
+    "findingSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 over the canonical (sorted-key) JSON of this finding without this field" }
+  }
+}

@@ -1,0 +1,34 @@
+schema_version: 2
+id: img2threejs-domain
+eval_type: product
+checks:
+  - kind: metric_score
+    file: metrics/geometry.json
+    path: .score
+    minimum: 1
+    dimension: geometry
+  - kind: metric_score
+    file: metrics/sceneGraph.json
+    path: .score
+    minimum: 1
+    dimension: sceneGraph
+  - kind: metric_score
+    file: metrics/materials.json
+    path: .score
+    minimum: 1
+    dimension: materials
+  - kind: metric_score
+    file: metrics/animation.json
+    path: .score
+    minimum: 1
+    dimension: animation
+  - kind: metric_score
+    file: metrics/runtime.json
+    path: .score
+    minimum: 1
+    dimension: runtime
+  - kind: metric_score
+    file: metrics/visual.json
+    path: .score
+    minimum: 0.99
+    dimension: visual

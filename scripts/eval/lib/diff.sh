@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/attribute.sh"
 source "$SCRIPT_DIR/manifest.sh"
 source "$SCRIPT_DIR/pricing.sh"
+source "$SCRIPT_DIR/discovery_grader.sh"
 
   # Typed case result; keep the legacy boolean as a compatibility field.
 build_case_result() {
@@ -16,6 +17,20 @@ build_case_result() {
   local checks_file="$run_dir/checks.json" manifest_file="$run_dir/env-manifest.json"
   local transcript="$run_dir/transcript.jsonl" stability_file="$run_dir/stability.json"
   local grading_manifest_file="$run_dir/grading-manifest.json"
+  # Autonomous Test Discovery: finalize discovery_finding after stability sampling. VERIFIED requires stability
+  # evidence bound by the grading manifest; the raw checks.json status is never trusted as final.
+  local discovery_json=null has_discovery=false final_checks_file="" dg_out case_json
+  if jq -e '[.checks[]? | select(.kind=="discovery_finding")] | length > 0' "$checks_file" >/dev/null 2>&1; then
+    has_discovery=true
+    final_checks_file="$(mktemp)"
+    if dg_out="$(discovery_finalize_case_json "$checks_file" "$run_dir/workdir" "$run_dir" "$grading_manifest_file" "" "$case_id" 2>/dev/null)" && [[ -n "$dg_out" ]]; then
+      printf '%s' "$dg_out" | jq '.checksDoc' > "$final_checks_file"
+      discovery_json="$(printf '%s' "$dg_out" | jq -c '.discovery')"
+    else
+      jq '. + {status:"ERROR",passed:false}' "$checks_file" > "$final_checks_file"
+    fi
+    checks_file="$final_checks_file"
+  fi
   local status eval_type compare_to_baseline passed baseline_passed=null
   status="$(jq -r '.status // (if .passed == true then "PASS" else "FAIL" end)' "$checks_file" 2>/dev/null || echo ERROR)"
   eval_type="$(jq -r '.evaluation_type // "regression"' "$checks_file" 2>/dev/null || echo regression)"
@@ -62,7 +77,8 @@ build_case_result() {
     manifest_sha="$(portable_sha256_file "$grading_manifest_file" | cut -d' ' -f1)"
     grading_manifest_path="$(basename "$run_dir")/grading-manifest.json"
   fi
-  jq -n \
+  case_json="$(jq -n \
+    --argjson discovery "$discovery_json" \
     --arg case_id "$case_id" --arg status "$status" --arg evaluation_type "$eval_type" \
     --argjson passed "$passed" --argjson compare_to_baseline "$compare_to_baseline" --argjson baseline_passed "$baseline_passed" \
     --slurpfile checks "$checks_file" --argjson env_delta "$env_delta" --argjson attribution "$attribution" \
@@ -70,7 +86,7 @@ build_case_result() {
     --argjson stability "$stability_json" --argjson usage_available "$usage_available" \
     --arg input_tokens "$input_tokens" --arg output_tokens "$output_tokens" \
     --arg grading_path "$grading_manifest_path" --arg grading_sha "$manifest_sha" \
-    '{case_id:$case_id,passed:$passed,status:$status,evaluation_type:$evaluation_type,
+    '{case_id:$case_id,passed:$passed,status:$status,evaluation_type:$evaluation_type,discovery:$discovery,
       compare_to_baseline:$compare_to_baseline,baseline_passed:$baseline_passed,
       regression:($compare_to_baseline and $baseline_passed==true and $status=="FAIL"),
       checks:($checks[0].checks // []),stochastic:($checks[0].stochastic // null),
@@ -80,7 +96,9 @@ build_case_result() {
       resources:{tokens:{status:(if $usage_available then "measured" else "unavailable" end),
         input_tokens:(if $usage_available then ($input_tokens|tonumber) else null end),
         output_tokens:(if $usage_available then ($output_tokens|tonumber) else null end)},cost:$cost},
-      grading_manifest:(if $grading_path=="" then null else {path:$grading_path,sha256:$grading_sha} end),rerun:$rerun}'
+      grading_manifest:(if $grading_path=="" then null else {path:$grading_path,sha256:$grading_sha} end),rerun:$rerun}')"
+  [[ -z "$final_checks_file" ]] || rm -f "$final_checks_file"
+  printf '%s\n' "$case_json"
 }
 
 

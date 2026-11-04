@@ -1,0 +1,22 @@
+{
+  "schema": "atd.qa-hook-config/v1",
+  "evalHarnessRoot": "@@EVAL_HARNESS_ROOT@@",
+  "outputRoot": "@@WORK@@/qa-hook",
+  "stateDir": "@@WORK@@/eval-state",
+  "node": "@@NODE@@",
+  "timeoutSeconds": 3300,
+  "passEnv": [],
+  "profiles": {
+    "collision-boundary": {
+      "repository": "@@FIXTURE_REPO@@",
+      "spec": "@@FIXTURE_REPO@@/SPEC.md",
+      "dependencies": "@@DEPENDENCIES@@",
+      "framework": "vitest",
+      "defaultBase": "@@BASE_COMMIT@@",
+      "defaultCandidate": "@@DEFECT_COMMIT@@",
+      "maxModelCalls": 1,
+      "maxCandidates": 12
+    }
+  },
+  "passEnvNote": "Config-only allowlist (never request-controlled). Default empty = local-same-user evidence (reporting only). For an independent signer add ATD_TRUST, ATD_SIGNING_KEY_FILE and ATD_ALLOWED_SIGNERS_FILE here AND list them in the QA campaign secret_envs; verification also needs the same stateDir. A local-same-user attestation never yields CONFIRMED_DEFECT."
+}

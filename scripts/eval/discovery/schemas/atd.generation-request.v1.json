@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.generation-request/v1",
+  "title": "Autonomous Test Discovery bounded generation request",
+  "description": "Built deterministically by scripts/eval/discovery/candidates.mjs from a change-risk report. The prompt is the only text sent to the existing OMP/Jev runtime; its output is untrusted data. Readers ignore unknown additive fields.",
+  "type": "object",
+  "required": ["schema", "baseCommit", "candidateCommit", "diffSha256", "specSha256", "riskReportSha256", "generatorRole", "strategies", "framework", "limits", "conventions", "targets", "spec", "mutants", "prompt", "promptSha256"],
+  "properties": {
+    "schema": { "const": "atd.generation-request/v1" },
+    "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "diffSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "specSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "riskReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "generatorRole": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "strategies": { "type": "array", "minItems": 1, "items": { "enum": ["intent_aware", "mutation_guided", "property_based"] } },
+    "framework": { "enum": ["vitest", "node:test"] },
+    "limits": {
+      "type": "object",
+      "required": ["maxCandidates", "maxPerFunction", "maxTestBytes", "maxContextBytes"],
+      "properties": {
+        "maxCandidates": { "type": "integer", "minimum": 1, "maximum": 25 },
+        "maxPerFunction": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "maxTestBytes": { "type": "integer", "minimum": 256, "maximum": 32768 },
+        "maxContextBytes": { "type": "integer", "minimum": 4096, "maximum": 196608 }
+      }
+    },
+    "conventions": {
+      "type": "object",
+      "required": ["framework", "frameworkSource", "moduleSystem", "testDirectory", "testFileExtension", "examples"],
+      "properties": {
+        "framework": { "enum": ["vitest", "node:test"] },
+        "frameworkSource": { "enum": ["explicit", "existing_tests", "package_json", "default"] },
+        "moduleSystem": { "enum": ["esm", "commonjs"] },
+        "testDirectory": { "type": "string", "minLength": 1 },
+        "testFileExtension": { "type": "string", "minLength": 1 },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256", "truncated", "text"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "truncated": { "type": "boolean" },
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "symbols", "riskLevel", "ruleIds", "changedBehaviors", "suspectedFailureModes", "affectedTests", "hunks", "importSpecifier", "implementation", "diff", "maxCandidates"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "symbols": { "type": "array", "items": { "type": "string" } },
+          "riskLevel": { "enum": ["low", "medium", "high"] },
+          "ruleIds": { "type": "array", "items": { "type": "string" } },
+          "changedBehaviors": { "type": "array", "items": { "type": "string" } },
+          "suspectedFailureModes": { "type": "array", "items": { "type": "string" } },
+          "affectedTests": { "type": "array", "items": { "type": "string" } },
+          "hunks": { "type": "array", "items": { "type": "object", "required": ["startLine", "endLine"] } },
+          "importSpecifier": { "type": "string", "minLength": 1 },
+          "maxCandidates": { "type": "integer", "minimum": 1, "maximum": 125 },
+          "implementation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["startLine", "endLine", "sha256", "truncated", "text"],
+              "properties": {
+                "startLine": { "type": "integer", "minimum": 1 },
+                "endLine": { "type": "integer", "minimum": 1 },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "truncated": { "type": "boolean" },
+                "text": { "type": "string" }
+              }
+            }
+          },
+          "diff": {
+            "type": "object",
+            "required": ["sha256", "truncated", "text"],
+            "properties": {
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "truncated": { "type": "boolean" },
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "spec": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["sha256", "truncated", "text"],
+          "properties": {
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "truncated": { "type": "boolean" },
+            "text": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "mutants": {
+      "type": "array",
+      "maxItems": 25,
+      "items": {
+        "type": "object",
+        "required": ["id", "file", "startLine", "endLine", "mutator", "replacement"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+          "file": { "type": "string", "minLength": 1 },
+          "startLine": { "type": "integer", "minimum": 1 },
+          "endLine": { "type": "integer", "minimum": 1 },
+          "mutator": { "type": "string" },
+          "replacement": { "type": "string" }
+        }
+      }
+    },
+    "prompt": { "type": "string", "minLength": 1 },
+    "promptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

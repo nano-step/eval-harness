@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.change-risk.v1",
+  "title": "Autonomous Test Discovery change-risk report",
+  "description": "Produced by scripts/eval/discovery/risk.mjs. Deterministic; suspectedFailureModes are hypotheses, never findings. Readers ignore unknown additive fields.",
+  "type": "object",
+  "required": ["schema", "baseCommit", "candidateCommit", "diffSha256", "specSha256", "ruleset", "llmAssist", "targets", "skipped"],
+  "properties": {
+    "schema": { "const": "atd.change-risk/v1" },
+    "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "diffSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "specSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "ruleset": {
+      "type": "object",
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "llmAssist": {
+      "type": "object",
+      "required": ["used"],
+      "properties": {
+        "used": { "type": "boolean" },
+        "modelId": { "type": "string" },
+        "outputSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "reason"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["generated", "dependency_dir", "lockfile", "formatting_only", "non_source", "deleted", "binary"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "range": {
+      "type": "object",
+      "required": ["startLine", "endLine"],
+      "properties": {
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["file", "symbols", "riskLevel", "changedBehaviors", "suspectedFailureModes", "affectedTests", "hunks", "ruleIds"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "symbols": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "riskLevel": { "enum": ["low", "medium", "high"] },
+        "changedBehaviors": { "type": "array", "items": { "type": "string" } },
+        "suspectedFailureModes": { "type": "array", "items": { "type": "string" } },
+        "affectedTests": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hunks": { "type": "array", "items": { "$ref": "#/$defs/range" } },
+        "ruleIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "symbolRanges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "startLine", "endLine"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "startLine": { "type": "integer", "minimum": 1 },
+              "endLine": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

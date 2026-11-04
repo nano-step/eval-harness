@@ -35,6 +35,34 @@ Implicit-safe `kind: shell` checks are parsed into a constrained argv pipeline c
 
 Fixture paths and grader artifact paths are checked for workdir confinement. LLM-judge prompts are sent to Anthropic when live judging is enabled; never include secrets in case prompts. The harness cannot redact unknown sensitive content.
 
+### Autonomous Test Discovery
+
+`atd-sandbox` is a narrower, explicit exception to the ordinary host runner:
+generated candidate tests execute only in the policy-approved Docker image,
+with no network, read-only source/dependencies/rootfs, non-root identity,
+dropped capabilities, resource limits and a host deadline. Missing confinement
+fails closed; it never runs the test on the host. Trusted dependency setup is
+separate and requires an explicit network acknowledgement.
+
+This does not make arbitrary case YAML or generic `grade` manifests untrusted
+inputs. The discovery workflow generates its own cases and admits only their
+fixed layout/check kinds before replay, preventing a rewritten discovery
+manifest from inserting host shell commands. Model output cannot provide
+grading checks, signer settings or expectation approvals.
+
+Local signatures provide integrity, not independent control from the same OS
+user. Blocking, automatic repair requests and QA confirmed-defect promotion
+require externally controlled signer trust, stable authenticated differential
+evidence and the operator's original review from a separate trusted directory.
+Neither a JSON trust label nor rewriting a review and its digest manifest grants
+approval. Keep keys outside repositories, case workdirs and all mounted paths.
+
+Residual risks include the shared Docker kernel/VM, same-UID framework/reporting
+processes and a writable output mount without a filesystem-wide quota. See the
+[discovery guide](./docs/AUTONOMOUS_TEST_DISCOVERY.md#limits-and-verification)
+for operational limits. Disk exhaustion, runtime/collection faults and missing
+evidence are inconclusive infrastructure results, never regression proof.
+
 ## Past security advisories
 
 Hardening release **v0.4.2** (2026-05-30) closed 8 audit-surfaced BLOCKERs including:

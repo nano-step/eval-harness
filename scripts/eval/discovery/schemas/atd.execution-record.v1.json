@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.execution-record/v1",
+  "title": "Autonomous Test Discovery execution record",
+  "description": "Produced only by the atd-sandbox runner (one container execution; a fresh executionId for every sample). outcome is derived from the structured reporter file, never from terminal text. Readers ignore unknown additive fields.",
+  "type": "object",
+  "required": ["schema", "executionId", "candidateId", "side", "revision", "testSha256", "depsSnapshotSha256", "lockfileSha256", "image", "nodeVersion", "profile", "argv", "env", "seed", "startedAt", "endedAt", "durationMs", "exitCode", "timedOut", "outcome", "artifacts"],
+  "properties": {
+    "schema": { "const": "atd.execution-record/v1" },
+    "executionId": { "type": "string", "pattern": "^exec_[0-9a-f-]{36}$" },
+    "candidateId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "side": { "enum": ["base", "candidate", "mutant"] },
+    "mutantId": { "type": "string" },
+    "revision": {
+      "type": "object",
+      "required": ["commit", "treeSha256"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "treeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "lockfileSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "testSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "testsTreeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "depsSnapshotSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "lockfileSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "image": {
+      "type": "object",
+      "required": ["ref", "digest"],
+      "properties": {
+        "ref": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "id": { "type": "string" }
+      }
+    },
+    "nodeVersion": { "type": "string" },
+    "profile": {
+      "type": "object",
+      "required": ["id", "policySha256"],
+      "properties": { "id": { "const": "atd-sandbox/v1" }, "policySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "sandboxProfileSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "argv": { "type": "array", "items": { "type": "string" } },
+    "env": { "type": "object", "additionalProperties": { "type": "string" } },
+    "seed": { "type": ["integer", "null"] },
+    "framework": { "enum": ["node:test", "vitest", "stryker"] },
+    "startedAt": { "type": "string" },
+    "endedAt": { "type": "string" },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "exitCode": { "type": "integer" },
+    "timedOut": { "type": "boolean" },
+    "outcome": { "enum": ["pass", "fail", "error"] },
+    "errorClass": { "enum": ["compile", "missing_fixture", "no_tests_collected", "timeout", "oom", "sandbox_preflight", "infra", "runtime_error", "budget_exceeded"] },
+    "mutationBudget": {
+      "type": "object",
+      "description": "Mutation runs only: the per-run mutant budget enforced inside the sandbox by the trusted atd-budget Stryker reporter before any mutant executes.",
+      "properties": {
+        "maxMutants": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "planned": { "type": ["integer", "null"] },
+        "allowed": { "type": ["boolean", "null"] },
+        "reportedMutants": { "type": ["integer", "null"] }
+      }
+    },
+    "counts": {
+      "type": ["object", "null"],
+      "properties": {
+        "executed": { "type": "integer" }, "passed": { "type": "integer" }, "failed": { "type": "integer" }, "skipped": { "type": "integer" },
+        "assertionFailures": { "type": "integer" }, "otherFailures": { "type": "integer" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "path", "sha256"],
+        "properties": {
+          "role": { "enum": ["junit", "vitest_json", "node_test_json", "stdout", "stderr", "stryker_report", "mutation_budget", "counterexample", "domain_structure", "domain_runtime", "domain_scene", "domain_model", "domain_beauty"] },
+          "path": { "type": "string", "pattern": "^artifacts/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

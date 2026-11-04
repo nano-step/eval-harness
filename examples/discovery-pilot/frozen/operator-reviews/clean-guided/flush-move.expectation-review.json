@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "flush-move",
+  "testSha256": "781161ae87a4c7cdc35f674ea460ab7bd8c46b84f28df41c524123bbf9f3aea2",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "0c22f69f8289a642402edea9ae73ebaa608339da74d9aa9c15b3e3127d2fc77a",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "SPEC Movement requires no collision at flush contact and collision after one unit of penetration. Left, above and negative-x movements satisfy those geometrical preconditions."
+}

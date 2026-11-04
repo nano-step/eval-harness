@@ -1,0 +1,46 @@
+{
+  "schema": "atd.sandbox-policy/v1",
+  "id": "atd-sandbox/v1",
+  "image": {
+    "ref": "mcr.microsoft.com/playwright@sha256:3bed4b1a12f2338642f3d8cba28e291deef3c66bd4a964bbeb3e57bbff511dbd",
+    "digest": "sha256:3bed4b1a12f2338642f3d8cba28e291deef3c66bd4a964bbeb3e57bbff511dbd",
+    "nodeMajor": 24
+  },
+  "allowedImages": ["mcr.microsoft.com/playwright@sha256:3bed4b1a12f2338642f3d8cba28e291deef3c66bd4a964bbeb3e57bbff511dbd"],
+  "trust": {
+    "default": "local-same-user",
+    "levels": ["local-same-user", "separate-user", "ci-secret"],
+    "blockingEligible": ["separate-user", "ci-secret"],
+    "note": "Local same-user signatures are reporting-only. Higher trust requires externally supplied signing credentials."
+  },
+  "user": "65534:65534",
+  "limits": {
+    "pidsLimit": 512, "memoryBytes": 2147483648, "cpus": 2,
+    "tmpMegabytes": 512, "fileSizeBytes": 33554432, "openFiles": 1024,
+    "defaultTimeoutSeconds": 120, "maxTimeoutSeconds": 600,
+    "maxExportFiles": 20000, "maxExportBytes": 268435456,
+    "maxTestFiles": 64, "maxTestBytes": 1048576,
+    "maxReporterBytes": 4194304, "maxLogBytes": 1048576,
+    "maxCandidateBytes": 262144, "maxSpecBytes": 4194304,
+    "maxDependencyFiles": 400000, "maxMutationSeconds": 1800,
+    "mutationWorkMegabytes": 512, "defaultMaxMutants": 100,
+    "hardMaxMutants": 500, "logMaxSize": "1m"
+  },
+  "env": {
+    "static": {"CI": "1", "TZ": "UTC", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "NODE_ENV": "test", "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright", "HOME": "/tmp"},
+    "seeded": ["ATD_SEED", "FC_SEED"],
+    "imageDefaults": ["PATH", "HOSTNAME", "HOME", "NODE_VERSION", "YARN_VERSION", "PLAYWRIGHT_BROWSERS_PATH"]
+  },
+  "frameworks": {
+    "node:test": {"extensions": [".js", ".mjs", ".cjs"], "requiresDependencies": false},
+    "vitest": {"extensions": [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"], "requiresDependencies": true, "entry": "node_modules/vitest/vitest.mjs", "testTimeoutMs": 20000},
+    "stryker": {"requiresDependencies": true, "entry": "node_modules/@stryker-mutator/core/bin/stryker.js"}
+  },
+  "signing": {"namespace": "atd-execution@v1", "principalPrefix": "atd-runner-"},
+  "residualRisks": [
+    "Docker is the isolation boundary; Chromium may use --no-sandbox only inside this container.",
+    "The Docker VM kernel is shared and the output mount has no filesystem quota.",
+    "Tests share the reporter UID; signed test hashes establish attribution, not test authority.",
+    "Docker's default seccomp profile is assumed."
+  ]
+}

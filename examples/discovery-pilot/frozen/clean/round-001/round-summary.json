@@ -1,0 +1,70 @@
+{
+  "schema": "atd.frozen-round-projection/v1",
+  "projection": true,
+  "note": "PROJECTION of an archived round-summary.json. It is NOT the original file and NOT a new generation: it carries only the round/base/candidate/request/generation provenance the replay needs. Machine-specific paths, evidence and errors of the original are omitted. The original summary is identified by source.originalSummarySha256.",
+  "round": 1,
+  "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+  "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "request": {
+    "promptSha256": "dfb4cb38852d16ea0001f773b4e42d33ff6c3d7ee55b2901a9db64bcf75c8746",
+    "diffSha256": "99ba5ccefcdff151dc639c8f5281627f4d299aa2739587036d40465edad5597f",
+    "strategies": [
+      "intent_aware",
+      "property_based"
+    ],
+    "survivingMutantsProvided": 0,
+    "limits": {
+      "maxCandidates": 12,
+      "maxPerFunction": 5,
+      "maxTestBytes": 32768,
+      "maxContextBytes": 98304
+    }
+  },
+  "generation": {
+    "recordedByOriginalRound": true,
+    "transport": "omp",
+    "real": true,
+    "modelRole": "implement",
+    "selector": "anthropic/claude-sonnet-5-5:high",
+    "servedModels": [
+      "anthropic/claude-sonnet-5-5"
+    ],
+    "modelCalls": 1,
+    "assistantMessages": 1,
+    "promptSha256": "dfb4cb38852d16ea0001f773b4e42d33ff6c3d7ee55b2901a9db64bcf75c8746",
+    "ompVersion": "omp/18.6.1",
+    "durationMs": 36154,
+    "usage": {
+      "input": 4,
+      "output": 5097,
+      "cacheRead": 404818,
+      "cacheWrite": 9063,
+      "costUsd": 0.16819360000000003
+    }
+  },
+  "candidates": {
+    "generatedByModel": 5,
+    "staticAcceptedIds": [
+      "axis-independence",
+      "invalid-rects-throw",
+      "overlap-properties",
+      "touching-edges-corners",
+      "zero-size-second-rect"
+    ],
+    "selectedIds": [
+      "axis-independence",
+      "invalid-rects-throw",
+      "overlap-properties",
+      "touching-edges-corners",
+      "zero-size-second-rect"
+    ],
+    "omittedIds": [],
+    "notStaticAcceptedIds": []
+  },
+  "source": {
+    "archive": "atd-pilot-20261104-repair-1 (local pilot archive; not shipped)",
+    "originalSummarySha256": "c5efb8bf165850e94423d6c66e7ae065cb6d8090d1a88683d79e961dde1f23d6",
+    "originalGenerationRequestSha256": "57e90fe5c5d15f650fe6e89b0e47d0451c83fbdff6e05b4bf37c638e45748789"
+  }
+}

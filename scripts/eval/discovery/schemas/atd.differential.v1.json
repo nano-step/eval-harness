@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.differential/v1",
+  "title": "Autonomous Test Discovery differential",
+  "description": "Produced only by the atd-sandbox runner. Consumers MUST recompute matrix and environmentEqual from the signed base/candidate records and never trust the claimed values alone. Readers ignore unknown additive fields.",
+  "type": "object",
+  "required": ["schema", "candidateId", "base", "candidate", "matrix", "environmentEqual"],
+  "properties": {
+    "schema": { "const": "atd.differential/v1" },
+    "candidateId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "base": { "type": "string", "description": "executionId of the base record" },
+    "candidate": { "type": "string", "description": "executionId of the candidate record" },
+    "matrix": { "enum": ["PASS->PASS", "PASS->FAIL", "FAIL->FAIL", "FAIL->PASS", "ERROR"] },
+    "environmentEqual": { "type": "boolean" },
+    "environmentMismatch": { "type": "array", "items": { "type": "string" } }
+  }
+}

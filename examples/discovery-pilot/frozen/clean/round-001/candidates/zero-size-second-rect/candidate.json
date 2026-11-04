@@ -1,0 +1,23 @@
+{
+  "schema": "atd.test-candidate/v1",
+  "id": "zero-size-second-rect",
+  "strategy": "intent_aware",
+  "targetFile": "src/collision.ts",
+  "testFile": "test/zero-size-second-rect.test.ts",
+  "framework": "vitest",
+  "testSha256": "33e842aa1aa46e1386bbb23baab8712b213a724e9c1d6e491bf50b3c6c4b9b52",
+  "requirementRef": {
+    "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+    "quote": "A rectangle with a width or height of zero has no interior."
+  },
+  "failureHypothesis": "The zero-size guard may handle only the first rectangle, or the interval helper may report a zero-size rectangle inside another as overlapping.",
+  "provenance": {
+    "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+    "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+    "sourceDiffHash": "99ba5ccefcdff151dc639c8f5281627f4d299aa2739587036d40465edad5597f",
+    "generatorRole": "intent_aware_generator",
+    "promptSha256": "dfb4cb38852d16ea0001f773b4e42d33ff6c3d7ee55b2901a9db64bcf75c8746",
+    "modelId": "anthropic/claude-sonnet-5-5"
+  },
+  "trust": "untrusted"
+}

@@ -140,11 +140,24 @@ done < <(jq -r '.evidence.artifacts[]? | [.role // "artifact", .path // "", .sta
 
 GRADE_OUT="$(mktemp)"
 run_all_checks "$case_path" "$workdir" "$transcript" "$GRADE_OUT"
+# Autonomous Test Discovery replay: never promote an unsampled provisional FAIL. The same finalizer as live runs
+# decides, using only stability evidence bound by this manifest (otherwise the finding stays SUSPECTED).
+HAS_DISCOVERY=0; DISCOVERY_JSON=null
+if jq -e '[.checks[]? | select(.kind=="discovery_finding")] | length > 0' "$GRADE_OUT" >/dev/null 2>&1; then
+  HAS_DISCOVERY=1
+  if _final="$(discovery_finalize_case_json "$GRADE_OUT" "$workdir" "$MANIFEST_ROOT" "$MANIFEST" "$run_id" "$case_id" 2>/dev/null)" && [[ -n "$_final" ]]; then
+    printf '%s' "$_final" | jq '.checksDoc' > "$GRADE_OUT.final" && mv "$GRADE_OUT.final" "$GRADE_OUT"
+    DISCOVERY_JSON="$(printf '%s' "$_final" | jq -c '.discovery')"
+  else
+    jq '. + {status:"ERROR",passed:false}' "$GRADE_OUT" > "$GRADE_OUT.final" && mv "$GRADE_OUT.final" "$GRADE_OUT"
+  fi
+fi
 manifest_sha="$(portable_sha256_file "$MANIFEST" | cut -d' ' -f1)"
 result="$(jq --arg rid "$run_id" --arg cid "$case_id" --arg mpath "$(basename "$MANIFEST")" --arg msha "$manifest_sha" \
   --argjson provenance "$(printf '%s' "$RAW" | jq -c '.provenance // {}')" \
   --argjson artifacts "$(printf '%s' "$RAW" | jq -c '.evidence.artifacts // []')" \
   '. + {schema_version:1,run_id:$rid,case_id:$cid,grading_manifest:{path:$mpath,sha256:$msha},provenance:$provenance,evidence_artifacts:$artifacts}' "$GRADE_OUT")"
+if [[ "$HAS_DISCOVERY" == "1" ]]; then result="$(printf '%s' "$result" | jq --argjson d "$DISCOVERY_JSON" '. + {discovery:$d}')"; fi
 rm -f "$GRADE_OUT"
 if [[ -n "$OUT" ]]; then mkdir -p "$(dirname "$OUT")"; printf '%s' "$result" > "$OUT"; fi
 printf '%s' "$result"; echo

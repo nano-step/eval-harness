@@ -1,0 +1,13 @@
+diff --git a/src/collision.ts b/src/collision.ts
+index e6edf40..ab8410c 100644
+--- a/src/collision.ts
++++ b/src/collision.ts
+@@ -15,7 +15,7 @@ function assertValid(rect: Rect, name: string): void {
+ export function overlaps(a: Rect, b: Rect): boolean {
+   assertValid(a, "a");
+   assertValid(b, "b");
+-  if (a.width === 0 || a.height === 0 || b.width === 0 || b.height === 0) {
++  if (a.width === 0 || a.height === 0) {
+     return false;
+   }
+   return (

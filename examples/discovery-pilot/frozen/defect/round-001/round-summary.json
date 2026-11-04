@@ -1,0 +1,73 @@
+{
+  "schema": "atd.frozen-round-projection/v1",
+  "projection": true,
+  "note": "PROJECTION of an archived round-summary.json. It is NOT the original file and NOT a new generation: it carries only the round/base/candidate/request/generation provenance the replay needs. Machine-specific paths, evidence and errors of the original are omitted. The original summary is identified by source.originalSummarySha256.",
+  "round": 1,
+  "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+  "candidateCommit": "58010e9f9b27907f197003f47ac35ac8ecf52249",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "request": {
+    "promptSha256": "648404267fbe621f61ff641804f59e87cef466b08cf5e25f1854d880a65c1438",
+    "diffSha256": "36050225fedbeb99fefd9450cdeb2321cd8e3897d8482e1b40928369212a25af",
+    "strategies": [
+      "intent_aware",
+      "property_based"
+    ],
+    "survivingMutantsProvided": 0,
+    "limits": {
+      "maxCandidates": 12,
+      "maxPerFunction": 5,
+      "maxTestBytes": 32768,
+      "maxContextBytes": 98304
+    }
+  },
+  "generation": {
+    "recordedByOriginalRound": true,
+    "transport": "omp",
+    "real": true,
+    "modelRole": "implement",
+    "selector": "anthropic/claude-sonnet-5-5:high",
+    "servedModels": [
+      "anthropic/claude-sonnet-5-5"
+    ],
+    "modelCalls": 1,
+    "assistantMessages": 1,
+    "promptSha256": "648404267fbe621f61ff641804f59e87cef466b08cf5e25f1854d880a65c1438",
+    "ompVersion": "omp/18.6.1",
+    "durationMs": 26770,
+    "usage": {
+      "input": 4,
+      "output": 4541,
+      "cacheRead": 404818,
+      "cacheWrite": 8451,
+      "costUsd": 0.1601856
+    }
+  },
+  "candidates": {
+    "generatedByModel": 7,
+    "staticAcceptedIds": [
+      "flush-move",
+      "prop-reference",
+      "prop-touching",
+      "touch-corner",
+      "touch-x-edge"
+    ],
+    "selectedIds": [
+      "flush-move",
+      "prop-reference",
+      "prop-touching",
+      "touch-corner",
+      "touch-x-edge"
+    ],
+    "omittedIds": [],
+    "notStaticAcceptedIds": [
+      "touch-y-edge",
+      "zero-second"
+    ]
+  },
+  "source": {
+    "archive": "atd-pilot-20261104-repair-1 (local pilot archive; not shipped)",
+    "originalSummarySha256": "fcf66a10d7aa896a113f30e8663bee852ab91d23afc9bde4e3625beffe19f98c",
+    "originalGenerationRequestSha256": "ee4f5c1aff07622a4b032ba3c3c5736d55eb8cbe316c933509b88211e30f662f"
+  }
+}

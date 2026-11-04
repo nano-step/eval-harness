@@ -66,7 +66,7 @@ run_with_timeout() {
     return $?
   fi
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "$max_seconds" "$@" <<'PY'
+    python3 -c '
 import subprocess
 import sys
 
@@ -82,7 +82,7 @@ except subprocess.TimeoutExpired:
 except FileNotFoundError:
     print(f"[eval-harness] command not found: {cmd[0]}", file=sys.stderr)
     sys.exit(127)
-PY
+' "$max_seconds" "$@"
     return $?
   fi
   echo "[eval-harness] missing timeout tool: install timeout, gtimeout, or python3" >&2

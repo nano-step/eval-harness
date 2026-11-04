@@ -120,6 +120,7 @@ The following variables are active in the v0.5.0 working tree and are not deprec
 - Environment manifests use schema 4. Schema_version is ignored as an environment drift signal; prompt/rubric/tool hashes introduced in schema 4 are ignored when absent from a legacy baseline.
 - Provider-neutral grading manifests use schema 1 and require digests for available case/workdir/transcript/artifact/environment evidence. Unsupported manifest versions or tampered content are rejected.
 - Consumers of results, baseline, or environment-manifest files must ignore unknown additive fields and handle absent optional fields. A breaking change to a required field or its semantics requires a breaking release.
+- Autonomous discovery adds optional finding fields and separately versioned `atd.*` evidence artifacts; it does not change existing case statuses or baseline-regression semantics. Local same-user evidence is reporting-only for downstream blocking and repair. Independent promotion requires explicit opt-in, authenticated evidence and the original trusted expectation review; generation or a matching specification quote alone grants no authority.
 
 ---
 

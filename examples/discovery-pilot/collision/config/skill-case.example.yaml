@@ -1,0 +1,47 @@
+# Example of one materialized discovery case (written by run.mjs, shown here as fixture data).
+# Fixture sources are controller-owned files; generator output is limited to candidate.json + one test file.
+schema_version: 2
+id: "touching-edges-not-overlap"
+mode: deterministic
+eval_type: capability
+compare_to_baseline: false
+skill_under_test: "atd-discovery"
+runner: atd-sandbox
+skills_loaded: ["atd-discovery"]
+description: "discovery candidate touching-edges-not-overlap (intent_aware) for src/collision.ts"
+tags: [discovery, atd]
+
+setup:
+  fixtures:
+    "SPEC.md": "/abs/round-001/spec/SPEC.md"
+    "candidate.json": "/abs/round-001/candidates/touching-edges-not-overlap/candidate.json"
+    "tests/touching-edges-not-overlap.test.ts": "/abs/round-001/candidates/touching-edges-not-overlap/tests/touching-edges-not-overlap.test.ts"
+
+runner_config:
+  repository: "/abs/fixture-repo"
+  baseCommit: "<40-hex base sha>"
+  candidateCommit: "<40-hex candidate sha>"
+  candidateFile: "candidate.json"
+  testsDir: "tests"
+  specFile: "SPEC.md"
+  dependencies: "/abs/deps-snapshot"
+  seed: 1337
+  timeoutSeconds: 120
+
+prompt: "Not used: the atd-sandbox runner executes the candidate test and ignores this string."
+
+budget:
+  max_tokens: 1
+  max_seconds: 300
+
+checks:
+  - kind: discovery_finding
+    required: true
+    severity: high
+    file: "atd-out/differential.json"
+    candidate_file: "candidate.json"
+    spec_file: "SPEC.md"
+    tests_dir: "tests"
+  - kind: discovery_test_health
+    required: false
+    file: "atd-out/differential.json"

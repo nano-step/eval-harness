@@ -7,6 +7,7 @@ Current stable release: **v0.5.0**. The CLI is distributed from the GitHub sourc
 - [Project overview and quick start](../README.md) — supported evaluation types, check kinds, installation, shell trust boundary, and examples.
 - [Runner contract](./runners.md) — OpenCode execution and the interface for prepared evidence from other runners.
 - [LangGraph example](../examples/langgraph-runner/) — a runnable example of the runner contract.
+- [Autonomous Test Discovery](./AUTONOMOUS_TEST_DISCOVERY.md) — generation, isolated differential/mutation execution, evidence replay, QA/Jev integration and trust boundaries.
 
 ## Contracts and design
 
@@ -22,4 +23,4 @@ Current stable release: **v0.5.0**. The CLI is distributed from the GitHub sourc
 - [Changelog](../CHANGELOG.md) — changes by release.
 - [Contributing](../CONTRIBUTING.md) — tests, review, and release workflow.
 
-All deterministic local tests run with `npm test`. They use fixtures and stub runners; they do not measure live model quality, latency, or cost.
+All local evaluation suites run with `npm test`. They use controlled fixtures and stub runners, plus live Docker checks when their prerequisites are available; they do not measure live model quality, latency or cost. The discovery guide describes the separate real-model pilot.

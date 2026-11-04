@@ -36,6 +36,7 @@ source "$LIB/portable.sh"
 source "$LIB/stats.sh"
 source "$LIB/perf.sh"
 source "$LIB/budget.sh"
+source "$LIB/atd_sandbox.sh"
 
 VERSION="0.5.0"
 
@@ -295,6 +296,7 @@ while IFS= read -r _r; do
   case "$_r" in
     opencode)       if ! preflight_check;          then exit 13; fi ;;
     langgraph-node) if ! preflight_check_langgraph; then exit 13; fi ;;
+    atd-sandbox)    if ! preflight_check_atd_sandbox; then exit 13; fi ;;
     *)
       echo "[eval-harness] unknown runner '$_r' in case files" >&2
       exit 13
@@ -429,6 +431,12 @@ for case_file in "${CASE_FILES[@]}"; do
         continue
       fi
       ;;
+    atd-sandbox)
+      if ! preflight_check_atd_sandbox --quick; then
+        case_results+=("$(_case_error_result "$cid" "runner preflight succeeds" "preflight failed for runner=$EFFECTIVE_RUNNER" "sandbox prerequisites unavailable (Docker daemon or pinned image); there is no host fallback")")
+        continue
+      fi
+      ;;
     *)
       case_results+=("$(_case_error_result "$cid" "supported runner" "unknown runner '$EFFECTIVE_RUNNER'" "runner adapter is not registered")")
       continue
@@ -546,12 +554,14 @@ for case_file in "${CASE_FILES[@]}"; do
   fi
 
   export EVAL_CASE_FILE="$per_case_dir/case.yaml"
+  # Bind sandbox attestations to this run/case (primary and every stability sample share them).
+  export EVAL_RUN_ID="$RUN_ID" EVAL_CASE_ID="$cid"
   tool_manifest_rel="$(yq -r '.tool_manifest_file // ""' "$case_file" 2>/dev/null || echo "")"
   if [[ -n "$tool_manifest_rel" ]]; then EVAL_TOOL_MANIFEST_FILE="$workdir/$tool_manifest_rel"; export EVAL_TOOL_MANIFEST_FILE; else unset EVAL_TOOL_MANIFEST_FILE; fi
   runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
   EVAL_RUNNER_CONFIG_SHA="$(printf '%s' "$runner_config_json" | portable_sha256_stdin | awk '{print $1}')"
   EVAL_GRAPH_FINGERPRINT="none"
-  if [[ "$EFFECTIVE_RUNNER" == "langgraph-node" ]]; then
+  if [[ "$EFFECTIVE_RUNNER" == "langgraph-node" || "$EFFECTIVE_RUNNER" == "atd-sandbox" ]]; then
     EVAL_GRAPH_FINGERPRINT="$(dispatch_runner fingerprint "$EFFECTIVE_RUNNER" "$workdir" "$runner_config_json" 2>/dev/null || echo none)"
     [[ -n "$EVAL_GRAPH_FINGERPRINT" ]] || EVAL_GRAPH_FINGERPRINT="none"
   fi
@@ -703,6 +713,8 @@ for case_file in "${CASE_FILES[@]}"; do
       sample_sandbox="$sample_dir/sandbox"
       cp -R "$workdir" "$sample_workdir"
       sample_transcript="$sample_dir/transcript.jsonl"
+      sample_spawn_failed=0
+      sample_exit_code=0
       case "$EFFECTIVE_RUNNER" in
         opencode)
           if command -v opencode >/dev/null 2>&1; then
@@ -717,8 +729,27 @@ for case_file in "${CASE_FILES[@]}"; do
           runner_config_json="$(yq -o=json '.runner_config // {}' "$case_file" 2>/dev/null || echo '{}')"
           spawn_runner langgraph-node "$sample_workdir" "$sample_workdir/$input_file" "$sample_workdir/$output_file" "$sample_transcript" "$runner_config_json" >/dev/null
           ;;
+        *)
+          # Generic adapters (atd-sandbox) are executed AGAIN in a fresh sandbox. The copied workdir's
+          # evidence is never re-graded: stale outputs are removed and a failed respawn becomes ERROR.
+          rm -rf "$sample_workdir/atd-out"
+          : > "$sample_transcript"
+          sample_exit_code="$(_spawn_case_runner "$prompt" "$sample_workdir" "$sample_sandbox" "$sample_transcript" "${skills_loaded[@]}")"
+          if [[ "$sample_exit_code" == "124" || ( "$sample_exit_code" != "0" && ! -s "$sample_transcript" ) ]]; then
+            sample_spawn_failed=1
+            rm -rf "$sample_workdir/atd-out"
+          fi
+          ;;
       esac
-      run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
+      if [[ "$sample_spawn_failed" == "1" ]]; then
+        echo "[eval-harness] case $cid: stability sample $s runner=$EFFECTIVE_RUNNER failed (exit $sample_exit_code) — sample is ERROR" >&2
+        jq -n --arg cid "$cid" --arg code "$sample_exit_code" --arg runner "$EFFECTIVE_RUNNER" --arg et "$eval_type" --argjson cmp "$compare_to_baseline" '{
+          passed:false,status:"ERROR",evaluation_type:$et,compare_to_baseline:$cmp,total:0,pass_count:0,fail_count:1,
+          checks:[{kind:"harness_error",passed:false,status:"ERROR",error:true,failed_check_id:("sample_spawn:"+$cid),expected:($runner+" completes with fresh sample evidence"),actual:($runner+" exit "+$code),diff_hint:"stability sample could not be re-executed; stale evidence was not reused"}],quality:{dimensions:{},aggregate:null}
+        }' > "$sample_dir/checks.json"
+      else
+        run_all_checks "$case_file" "$sample_workdir" "$sample_transcript" "$sample_dir/checks.json"
+      fi
       hashes+=("$(hash_checks "$sample_dir/checks.json")")
       s=$((s+1))
     done

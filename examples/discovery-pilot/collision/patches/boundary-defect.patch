@@ -1,0 +1,15 @@
+diff --git a/src/collision.ts b/src/collision.ts
+index e6edf40..2c628d4 100644
+--- a/src/collision.ts
++++ b/src/collision.ts
+@@ -19,8 +19,8 @@ export function overlaps(a: Rect, b: Rect): boolean {
+     return false;
+   }
+   return (
+-    a.x < b.x + b.width &&
+-    b.x < a.x + a.width &&
++    a.x <= b.x + b.width &&
++    b.x <= a.x + a.width &&
+     a.y < b.y + b.height &&
+     b.y < a.y + a.height
+   );

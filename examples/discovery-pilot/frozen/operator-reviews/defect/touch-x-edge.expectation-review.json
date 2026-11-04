@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "touch-x-edge",
+  "testSha256": "cda012548af37973654002b3d332065a1c01ebaee185b6a8fbba4bb7767a35ed",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "802bac32480cf0e199b73f8a032e236b4a7d62f6d6490e5d69ab15cfe642b7a1",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "SPEC excludes horizontal edge-only contact in either order and includes one-unit positive-area penetration. All concrete y intervals overlap, isolating the x boundary."
+}

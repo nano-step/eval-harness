@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "overlap-properties",
+  "testSha256": "04ea6c866230ed8c53220019ecf21c7d12a2cb2ff9af3c32b74640feb4beee28",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "e488406f1e31c40e302a38d3c41d86aa486aacac811207d82b1a7c8643d3fc2b",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "SPEC explicitly requires symmetry, common-translation invariance, empty rectangles never overlapping, and exclusion of flush contact. Bounded integer generation makes the asserted transformations exact."
+}

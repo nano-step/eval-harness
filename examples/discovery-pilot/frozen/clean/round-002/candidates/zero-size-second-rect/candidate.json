@@ -1,0 +1,27 @@
+{
+  "schema": "atd.test-candidate/v1",
+  "id": "zero-size-second-rect",
+  "strategy": "mutation_guided",
+  "targetFile": "src/collision.ts",
+  "testFile": "test/zero-size-second-rect.test.ts",
+  "framework": "vitest",
+  "testSha256": "4c153b43b91103e6de6dfad10111fa2b3d9f6b59c4730ec638b26efa1e4a3247",
+  "requirementRef": {
+    "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+    "quote": "It never overlaps another rectangle,"
+  },
+  "failureHypothesis": "The zero-size guard may not cover the second rectangle's width or height, so a zero-width/height second rectangle strictly inside the first could be reported as overlapping.",
+  "provenance": {
+    "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+    "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+    "sourceDiffHash": "99ba5ccefcdff151dc639c8f5281627f4d299aa2739587036d40465edad5597f",
+    "generatorRole": "mutation_guided_generator",
+    "promptSha256": "8a6c9ab4b1e0c6ff69bfeada70c943faf2d20ea5bcc1ca24530b6f1bdaa6e799",
+    "modelId": "anthropic/claude-sonnet-5-5"
+  },
+  "trust": "untrusted",
+  "killsMutantIds": [
+    "28",
+    "30"
+  ]
+}

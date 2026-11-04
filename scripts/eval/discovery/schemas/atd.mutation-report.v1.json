@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.mutation-report/v1",
+  "title": "Autonomous Test Discovery normalized Stryker report",
+  "description": "Produced by scripts/eval/discovery/mutation.mjs from a Stryker JSON report. gaps are surviving test-suite gaps (hypotheses): confirmedBug is always false because mutation testing can never confirm a product defect. Unavailable values are null, never fabricated zeros.",
+  "type": "object",
+  "required": ["schema", "tool", "baseCommit", "candidateCommit", "diffSha256", "riskReportSha256", "seed", "configSha256", "scope", "sources", "sourcePreserved", "counts", "score", "mutants", "mutantsTruncated", "gaps", "gapsTruncated", "semantics", "warnings"],
+  "properties": {
+    "schema": { "const": "atd.mutation-report/v1" },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version", "reportSchemaVersion"],
+      "properties": {
+        "name": { "const": "stryker" },
+        "version": { "type": ["string", "null"] },
+        "reportSchemaVersion": { "type": ["string", "null"] }
+      }
+    },
+    "baseCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "candidateCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "diffSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "riskReportSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "seed": { "type": ["integer", "null"], "minimum": 0, "maximum": 2147483647 },
+    "configSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "scope": { "type": ["string", "null"], "enum": ["hunks", "symbols", null] },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "reportSha256", "candidateSha256", "matches"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "reportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "candidateSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+          "matches": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+    "sourcePreserved": { "type": ["boolean", "null"] },
+    "counts": {
+      "type": "object",
+      "required": ["total", "killed", "survived", "equivalent", "invalid", "ignored", "unknown", "noCoverage", "timeout"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "killed": { "type": "integer", "minimum": 0 },
+        "survived": { "type": "integer", "minimum": 0 },
+        "equivalent": { "type": "integer", "minimum": 0 },
+        "invalid": { "type": "integer", "minimum": 0 },
+        "ignored": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "noCoverage": { "type": "integer", "minimum": 0 },
+        "timeout": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "mutants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "file", "mutator", "startLine", "startColumn", "endLine", "endColumn", "replacement", "original", "symbol", "status", "outcome", "detail"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "key": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "mutator": { "type": "string" },
+          "startLine": { "type": "integer", "minimum": 1 },
+          "startColumn": { "type": "integer" },
+          "endLine": { "type": "integer", "minimum": 1 },
+          "endColumn": { "type": "integer" },
+          "replacement": { "type": "string" },
+          "original": { "type": ["string", "null"] },
+          "symbol": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "outcome": { "enum": ["killed", "survived", "equivalent", "invalid", "ignored", "unknown"] },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "mutantsTruncated": { "type": "boolean" },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "file", "startLine", "startColumn", "endLine", "endColumn", "mutator", "replacement", "original", "symbol", "subtype", "kind", "confirmedBug"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "key": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "startLine": { "type": "integer", "minimum": 1 },
+          "startColumn": { "type": "integer" },
+          "endLine": { "type": "integer", "minimum": 1 },
+          "endColumn": { "type": "integer" },
+          "mutator": { "type": "string" },
+          "replacement": { "type": "string" },
+          "original": { "type": ["string", "null"] },
+          "symbol": { "type": ["string", "null"] },
+          "subtype": { "enum": ["survived", "no_coverage"] },
+          "kind": { "const": "surviving_gap" },
+          "confirmedBug": { "const": false }
+        }
+      }
+    },
+    "gapsTruncated": { "type": "boolean" },
+    "semantics": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

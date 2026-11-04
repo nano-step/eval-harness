@@ -1,0 +1,19 @@
+{
+  "name": "atd-collision-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Discovery pilot benchmark modelled on axis-aligned rectangle collision. Fixture only.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
+    "fast-check": "4.10.2",
+    "vitest": "5.1.0"
+  }
+}

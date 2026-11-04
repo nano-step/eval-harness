@@ -5,16 +5,18 @@
 ## What is a runner?
 
 A **runner** is a pluggable adapter that lets the eval-harness regression-test
-agents built on any framework, not just opencode. The case YAML, the 6 check
-kinds, and the 4-class attribution stay unchanged — only the spawn layer varies.
+agents built on any framework, not just opencode. The case YAML, typed checks
+and 4-class attribution stay shared — the spawn layer varies.
 
-The harness ships with two runners:
+The source tree includes three runners:
 
 - **`opencode`** — the implicit default; the original agent. No adapter file
   exists for it; the dispatcher has a fast-path that calls the existing
   `spawn_opencode`, `token_total`, and preflight probes directly.
 - **`langgraph-node`** — the first explicit adapter, added in v0.5.0. Runs
   Python-based LangGraph graphs via `python3 -m <module> --input X --output Y`.
+- **`atd-sandbox`** — independent base/candidate test execution in digest-pinned,
+  fail-closed Docker containers for Autonomous Test Discovery.
 
 Future runners (Python generic, HTTP, MCP) are proposed but not yet shipped.
 
@@ -165,6 +167,38 @@ classes. The regex extensions added for LangGraph are:
 The full attribution decision tree is in
 [`scripts/eval/lib/attribute.sh`](../scripts/eval/lib/attribute.sh).
 
+## The `atd-sandbox` runner
+
+[`runners/atd-sandbox.sh`](../scripts/eval/runners/atd-sandbox.sh) executes
+the same untrusted candidate test in separately exported Git revisions. It does
+not start an agent. Its transcript records execution evidence, while the
+`discovery_finding` and optional `discovery_test_health` checks consume signed
+structured artifacts.
+
+Configuration identifies an absolute `repository`, full 40-hex `baseCommit` and
+`candidateCommit`, and case-relative input paths `candidateFile`, `testsDir`
+and `specFile` (defaults: `candidate.json`, `tests`, `SPEC.md`). `testsDir`
+only locates host inputs. `testsRel` selects their placement inside each exported
+revision: default `"."` means the revision root; `"tests"` places them below
+`/work/tests`. `candidate.testFile` is relative to that placement root. Generated
+cases explicitly use `"."`, preserving imports from `test/foo.test.ts` to
+`../src/...`. Other placements must be safe relative directories; traversal,
+dependency/VCS paths and collisions with tracked files are refused.
+Optional `dependencies` is an external trusted snapshot; `image`, `seed` and
+`timeoutSeconds` are bounded by trusted policy. Unknown configuration keys are
+rejected. The candidate manifest selects `node:test` or Vitest and binds the
+test source hash.
+
+`prepare` checks the daemon, image and effective confinement. `spawn` clears
+stale outputs before running; failures cannot fall back to the host. Every
+stability sample gets new execution IDs and fresh containers. `fingerprint`
+binds runner/policy/configuration; `teardown` removes containers owned by the
+workdir. Invalid configuration or infrastructure exits 13 without usable
+transcript evidence.
+
+See [Autonomous Test Discovery](./AUTONOMOUS_TEST_DISCOVERY.md) for dependency
+setup, attestation/review trust, outcome semantics, limits and the live pilot.
+
 ## Examples
 
 - [`examples/langgraph-runner/`](../examples/langgraph-runner/) — the
@@ -183,6 +217,9 @@ The full attribution decision tree is in
 - **Shipped** (v0.5.0):
   - `opencode` — implicit default; no adapter file.
   - `langgraph-node` — first explicit adapter; LangGraph framework.
+
+- **Unreleased source additions**:
+  - `atd-sandbox` — confined differential test execution; see the discovery guide.
 
 - **Proposed** (not yet shipped):
   - `python-generic` — Python agents not built on LangGraph.
