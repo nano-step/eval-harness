@@ -6,16 +6,27 @@
 
 **v0.5.0 · released 2026-09-30**
 
-Typed evaluation for OpenCode skills and AI-agent workflows. Run a skill with OpenCode, or grade content-addressed evidence from another runner without starting a model. Results preserve behavior status, product dimensions, evidence availability, and provenance instead of flattening them into one score.
+**Know whether an agent still does what you expect—and what evidence supports that decision.**
 
-## What it does
+eval-harness evaluates OpenCode skills and AI-agent workflows with typed checks, baseline comparisons, and evidence-backed reports. Run an agent through a runner, or grade prepared evidence without starting a model.
 
-- **Capability, regression, and product evaluations.** Each case declares what it measures and whether it compares against a baseline.
-- **Typed outcomes.** `PASS`, `FAIL`, `ERROR`, `NEEDS_REVIEW`, and `INDETERMINATE` stay distinct. Missing evidence is never a pass or a measured zero.
-- **Provider-neutral grading.** `grade` validates a schema-1 manifest binding the case, workdir tree, transcript, artifacts, environment, and provenance. It does not execute a model or load arbitrary evaluator plugins.
-- **Independent product dimensions.** Numeric measurements stay grouped by their declared dimension; eval-harness does not compute a global product-quality score.
-- **Auditable comparisons and reports.** Baselines, typed A/B results, attribution, token/cost/duration coverage, JUnit XML, and SARIF help explain what changed and what evidence is available.
-- **Autonomous Test Discovery.** Bounded intent-aware test generation, scoped Stryker mutation and isolated base/candidate execution feed the existing graders and reports. Discovery gates are warn-only by default; a generator cannot approve its own findings.
+## Why eval-harness?
+
+Agent behavior can change when a skill, fixture, model, or environment changes. A plausible response alone cannot tell you whether the behavior still meets its contract. A single score also hides the difference between a failed check, missing evidence, and a decision that needs human review.
+
+Use eval-harness when you need repeatable checks for agent behavior, a baseline to detect regressions, and enough provenance to investigate changes. It complements application tests and general-purpose LLM evaluation tools; it does not replace them or prove that a changed input caused a failure.
+
+## Core features
+
+| Feature | What it does | Why it matters |
+|---|---|---|
+| **Capability, regression, and product cases** | Define behavior checks and named product dimensions; compare regression cases against a baseline. | Check new capabilities without losing sight of existing behavior, and keep distinct measurements separate. |
+| **Typed outcomes** | Report `PASS`, `FAIL`, `ERROR`, `NEEDS_REVIEW`, or `INDETERMINATE`. | Missing evidence is neither a pass nor a measured zero; human review and execution errors stay visible. |
+| **Provider-neutral evidence grading** | Validate a schema-1 manifest binding the case, workdir tree, transcript, artifacts, environment, and provenance. | Grade evidence produced by another runner without starting a model or loading arbitrary evaluator plugins. |
+| **Baselines and attribution** | Compare results and report changed evidence and environment fields. | Narrow an investigation to observed changes without claiming that hash co-occurrence proves causality. |
+| **Reliability and resource reporting** | Report repeated-trial statistics and measured, partial, or unavailable token, cost, and duration coverage. | See variability and unknown costs instead of treating incomplete measurements as zero. |
+| **CI-ready reports** | Export JUnit XML and SARIF; use strict result gates. | Bring evaluation outcomes into existing review and CI workflows. |
+| **Autonomous Test Discovery** | Generate bounded intent-aware tests, run scoped Stryker mutation and isolated base/candidate execution, then feed findings to the existing graders. | Surface potential gaps for review; discovery gates are warn-only by default, and a generator cannot approve its own findings. |
 
 `run` selects a runner, with OpenCode as the default. The LangGraph example demonstrates the runner contract; `atd-sandbox` executes discovery tests in confined containers. `grade` accepts prepared evidence without coupling grading to the producer.
 
@@ -33,6 +44,8 @@ eval-harness --version
 Node.js 18+ is required for the CLI link. Running `npm link` creates a local symlink to this checkout; it does not publish a package.
 
 ## Quick start
+
+For the default OpenCode runner, install `opencode` on `PATH`, make `yq` or Python 3 available, and configure a provider credential through OpenCode or a supported API key. These preflight requirements also apply to `--dry-run`; it does not spawn an evaluation.
 
 Set `OPENCODE_SKILLS_ROOT` to the directory containing `<skill-name>/evals/cases/*.yaml`, then run:
 
