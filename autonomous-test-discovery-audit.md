@@ -71,9 +71,9 @@ changed paths. These prerequisite measurements are not feature acceptance.
   USD 2.0203312 generation cost; cached input is recorded separately in its raw
   report. These are pipeline-only observations, not main-session or
   worker-inclusive usage and not evidence of quota or quality gains.
-- Reviewed frozen replays have completed, but the successful mutation comparison,
-  independent CI run and final benchmark remain unverified. Domain expansion
-  remains sequenced after a successful pilot. No PR or merge has been performed.
+- At that checkpoint, the successful mutation comparison, independent CI run
+  and final benchmark were unverified. Domain expansion remained sequenced
+  after a successful pilot; no PR or merge had yet been performed.
 
 - A separate live Stryker budget smoke planned 35 mutants with a cap of 2 and
   refused before mutant execution. It exited 13 in 39.63 seconds, retained
@@ -142,8 +142,8 @@ changed paths. These prerequisite measurements are not feature acceptance.
 - Sonnet returned HTTP 429 `rate_limit_error`, with `retry-after-ms=7546000`.
   The user subsequently explicitly authorized GPT 6.1 for implementation;
   work resumed using that model, without M3 fallback.
-  Final integrated acceptance, publication and merge remain incomplete.
-  No PR has been opened and nothing has been merged.
+  At that checkpoint, final integrated acceptance, publication and merge were
+  incomplete; no PR had yet been opened.
 - A real GPT 6.1 QA generation made one call (150,424 input, 1,229 output,
   reported cost USD 0), then hit `ENOSPC` during sandbox execution. Its
   partial artifacts are retained; the QA operation did not complete.
