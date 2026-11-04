@@ -1,0 +1,8 @@
+{
+  "operation_id": "atd-collision-0001",
+  "namespace": "ns-collision-pilot",
+  "oracle_id": "collision-boundary",
+  "mode": "run",
+  "base": "@@BASE_COMMIT@@",
+  "candidate": "@@DEFECT_COMMIT@@"
+}

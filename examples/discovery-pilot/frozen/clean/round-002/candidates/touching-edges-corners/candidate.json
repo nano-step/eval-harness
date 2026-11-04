@@ -1,0 +1,23 @@
+{
+  "schema": "atd.test-candidate/v1",
+  "id": "touching-edges-corners",
+  "strategy": "intent_aware",
+  "targetFile": "src/collision.ts",
+  "testFile": "test/touching-edges-corners.test.ts",
+  "framework": "vitest",
+  "testSha256": "2b100472d47f53c01cfc43688c8e6ed7014c593446ddda98fdfd5a257bcee3e1",
+  "requirementRef": {
+    "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+    "quote": "Rectangles that only touch along an edge or at a corner do not overlap."
+  },
+  "failureHypothesis": "The interval comparison may use inclusive bounds so edge- or corner-touching rectangles are reported as overlapping.",
+  "provenance": {
+    "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+    "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+    "sourceDiffHash": "99ba5ccefcdff151dc639c8f5281627f4d299aa2739587036d40465edad5597f",
+    "generatorRole": "mutation_guided_generator",
+    "promptSha256": "8a6c9ab4b1e0c6ff69bfeada70c943faf2d20ea5bcc1ca24530b6f1bdaa6e799",
+    "modelId": "anthropic/claude-sonnet-5-5"
+  },
+  "trust": "untrusted"
+}

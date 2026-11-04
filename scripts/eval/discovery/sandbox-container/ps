@@ -1,0 +1,27 @@
+#!/usr/local/bin/node
+// ps — deliberately minimal /proc-based stand-in, NOT procps. The pinned slim Node image has no
+// procps, and StrykerJS's process-tree cleanup (tree-kill, Linux path) spawns exactly
+//     ps -o pid --no-headers --ppid <pid>
+// A missing binary crashes Stryker. Trusted file, mounted read-only at /atd and placed on PATH for
+// Stryker only. It accepts ONLY that argv; anything else is refused (exit 2) so it can never quietly
+// impersonate a fuller ps. Like procps it prints one child pid per line and exits 1 when nothing
+// is selected (tree-kill crashes on an empty successful result).
+const fs = require('node:fs');
+const a = process.argv.slice(2);
+const supported = a.length === 5 && a[0] === '-o' && a[1] === 'pid' && a[2] === '--no-headers' && a[3] === '--ppid' && /^(0|[1-9][0-9]{0,9})$/.test(a[4]);
+if (!supported) {
+  process.stderr.write('atd ps stand-in: only `-o pid --no-headers --ppid <pid>` is supported\n');
+  process.exit(2);
+}
+const ppid = a[4];
+const found = [];
+for (const d of fs.readdirSync('/proc')) {
+  if (!/^[0-9]+$/.test(d)) continue;
+  try {
+    const st = fs.readFileSync(`/proc/${d}/stat`, 'utf8');
+    const rest = st.slice(st.lastIndexOf(')') + 2).split(' ');
+    if (rest[1] === ppid) found.push(d);
+  } catch { /* process vanished */ }
+}
+if (found.length > 0) process.stdout.write(`${found.join('\n')}\n`);
+process.exitCode = found.length > 0 ? 0 : 1;

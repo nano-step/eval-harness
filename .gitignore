@@ -1,4 +1,5 @@
 node_modules/
+__pycache__/
 .opencode/eval-harness/runs/
 .opencode/eval-harness/locks/
 .opencode/eval-harness/spend.json

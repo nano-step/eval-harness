@@ -1,0 +1,159 @@
+name: discovery-evidence
+
+# Independent-signer acceptance run for Autonomous Test Discovery over the FROZEN dataset
+# (examples/discovery-pilot/frozen): 0 fresh model calls, real Docker sandbox, real StrykerJS, the actual Jev gate in block
+# mode. The signing key is created here, in RUNNER_TEMP, outside the checkout, the output and the eval state; only its
+# paths are exported to later steps (never its contents) and only the PUBLIC allowed_signers file is uploaded.
+# The pinned sandbox image is a single-platform arm64 digest, hence the arm64 runner; there is no emulation.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/discovery-evidence.yml"
+      - "scripts/eval/**"
+      - "examples/discovery-pilot/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/discovery-evidence.yml"
+      - "scripts/eval/**"
+      - "examples/discovery-pilot/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discovery-evidence:
+    name: discovery evidence (independent signer)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure jq is available
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
+      - name: Install Python YAML dependency
+        run: python -m pip install pyyaml
+
+      - name: Show tool versions
+        run: |
+          bash --version | head -1
+          jq --version
+          python3 --version
+          node --version
+          docker --version
+          ssh -V 2>&1 | head -1 || true
+
+      - name: Pull the pinned sandbox image (explicit; the runner never pulls)
+        run: |
+          set -euo pipefail
+          IMAGE="$(jq -r '.image.ref' scripts/eval/discovery/policy/atd-sandbox.v1.json)"
+          docker pull "$IMAGE"
+          ARCH="$(docker image inspect --format '{{.Architecture}}' "$IMAGE")"
+          case "$(uname -m)" in aarch64|arm64) HOST_ARCH=arm64 ;; x86_64) HOST_ARCH=amd64 ;; *) HOST_ARCH="$(uname -m)" ;; esac
+          if [[ "$ARCH" != "$HOST_ARCH" ]]; then
+            echo "::error::pinned image architecture ($ARCH) does not match the runner ($HOST_ARCH)"
+            exit 1
+          fi
+          echo "image $IMAGE architecture $ARCH"
+
+      - name: Build the trusted dependency snapshot (the only networked step)
+        run: |
+          bash scripts/eval/discovery/setup-deps.sh \
+            --lockfile-dir=examples/discovery-pilot/collision \
+            --allow-network \
+            --out="$RUNNER_TEMP/atd-deps"
+
+      - name: Create the ephemeral CI signing key (outside checkout, output and state)
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYDIR="$RUNNER_TEMP/trusted-signing"
+          mkdir -m 700 "$KEYDIR"
+          ssh-keygen -q -t ed25519 -N '' -C "atd-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" -f "$KEYDIR/signing_key"
+          chmod 600 "$KEYDIR/signing_key"
+          # the principal and namespace come from the actual verifier constants, not from a copy here
+          read -r NAMESPACE PRINCIPAL_PREFIX < <(node --input-type=module -e "
+            import { NAMESPACE, PRINCIPAL_PREFIX } from './scripts/eval/discovery/attest.mjs';
+            console.log(NAMESPACE, PRINCIPAL_PREFIX);")
+          PUB="$(cut -d' ' -f1,2 "$KEYDIR/signing_key.pub")"
+          printf '%sci-secret namespaces="%s" %s\n' "$PRINCIPAL_PREFIX" "$NAMESPACE" "$PUB" > "$KEYDIR/allowed_signers"
+          chmod 600 "$KEYDIR/allowed_signers"
+          rm -f "$KEYDIR/signing_key.pub"
+          {
+            echo "ATD_TRUST=ci-secret"
+            echo "ATD_SIGNING_KEY_FILE=$KEYDIR/signing_key"
+            echo "ATD_ALLOWED_SIGNERS_FILE=$KEYDIR/allowed_signers"
+          } >> "$GITHUB_ENV"
+
+      - name: Run the frozen-dataset evidence acceptance
+        run: |
+          bash scripts/eval/discovery/ci-evidence.sh \
+            --out="$RUNNER_TEMP/atd-ci-evidence" \
+            --dependencies="$RUNNER_TEMP/atd-deps" \
+            --state-dir="$RUNNER_TEMP/atd-eval-state"
+
+      - name: Summarize
+        if: always()
+        run: |
+          set +x
+          EVIDENCE_OUT="$RUNNER_TEMP/atd-ci-evidence"
+          if [[ -f "$EVIDENCE_OUT/ci-observations.json" ]]; then
+            {
+              echo "### discovery evidence"
+              echo
+              jq -r '"- run: \(.ci.runUrl // "n/a") (attempt \(.ci.runAttempt // "n/a"))",
+                     "- commit: `\(.ci.sha // "n/a")`",
+                     "- mode: **\(.mode)** (independent signer claimed: \(.claimsIndependentSigner))",
+                     "- public signer fingerprint: `\(.signer.publicFingerprint // "n/a")`",
+                     "- fresh generation calls: \([.rounds[].freshModelCalls] | add)",
+                     "- gate exit (block mode): \(.gate.exitCode); independently verified: \((.gate.independentVerified // []) | length); repair requests: \(.gate.requests | length)",
+                     "- failed checks: \(if (.failedChecks | length) == 0 then "none" else (.failedChecks | join(", ")) end)",
+                     "", "| check | result |", "| --- | --- |",
+                     (.checks[] | "| \(.id) | \(if .pass then "PASS" else "FAIL" end) |")' "$EVIDENCE_OUT/ci-observations.json"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=discovery evidence::run ${GITHUB_RUN_ID} commit ${GITHUB_SHA} fingerprint $(jq -r '.signer.publicFingerprint // "n/a"' "$EVIDENCE_OUT/ci-observations.json")"
+          else
+            echo "No ci-observations.json was produced; see the job log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Explicit allowlist: reports, case evidence, observations and the PUBLIC signer data. The key directory, the eval state
+      # directory and the dependency snapshot live outside this path and are never uploaded.
+      - name: Upload evidence (reports, case evidence, public signer data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discovery-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/atd-ci-evidence/ci-observations.json
+            ${{ runner.temp }}/atd-ci-evidence/steps.log
+            ${{ runner.temp }}/atd-ci-evidence/steps
+            ${{ runner.temp }}/atd-ci-evidence/public
+            ${{ runner.temp }}/atd-ci-evidence/clean
+            ${{ runner.temp }}/atd-ci-evidence/defect
+            ${{ runner.temp }}/atd-ci-evidence/mutation
+            ${{ runner.temp }}/atd-ci-evidence/integrity-before.json
+            ${{ runner.temp }}/atd-ci-evidence/integrity-after.json
+          if-no-files-found: warn
+          retention-days: 30

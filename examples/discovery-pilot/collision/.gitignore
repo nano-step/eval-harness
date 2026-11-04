@@ -1,0 +1,4 @@
+node_modules/
+.stryker-tmp/
+reports/
+atd-out/

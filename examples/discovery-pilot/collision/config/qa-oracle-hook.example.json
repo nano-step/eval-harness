@@ -1,0 +1,9 @@
+{
+  "name": "atd-discovery",
+  "purpose": "oracle",
+  "command": [
+    "@@EVAL_HARNESS_ROOT@@/integrations/qa-factory/discovery.py",
+    "--config",
+    "@@WORK@@/qa-hook-config.json"
+  ]
+}

@@ -15,8 +15,9 @@ Typed evaluation for OpenCode skills and AI-agent workflows. Run a skill with Op
 - **Provider-neutral grading.** `grade` validates a schema-1 manifest binding the case, workdir tree, transcript, artifacts, environment, and provenance. It does not execute a model or load arbitrary evaluator plugins.
 - **Independent product dimensions.** Numeric measurements stay grouped by their declared dimension; eval-harness does not compute a global product-quality score.
 - **Auditable comparisons and reports.** Baselines, typed A/B results, attribution, token/cost/duration coverage, JUnit XML, and SARIF help explain what changed and what evidence is available.
+- **Autonomous Test Discovery.** Bounded intent-aware test generation, scoped Stryker mutation and isolated base/candidate execution feed the existing graders and reports. Discovery gates are warn-only by default; a generator cannot approve its own findings.
 
-`run` is the OpenCode execution adapter. A LangGraph runner example demonstrates the runner contract; `grade` accepts prepared evidence without coupling the grader to that runner.
+`run` selects a runner, with OpenCode as the default. The LangGraph example demonstrates the runner contract; `atd-sandbox` executes discovery tests in confined containers. `grade` accepts prepared evidence without coupling grading to the producer.
 
 ## Install
 
@@ -65,7 +66,7 @@ Strict grading exits 13 for malformed or tampered evidence, 14 for `FAIL`, 15 fo
 | `capability` | Verify declared behavior or coverage | Disabled by default |
 | `product` | Report named product measurements | Disabled by default |
 
-Shipped checks: `shell`, `jq_path_contains`, `file_exists`, `output_contains`, `output_not_contains`, `llm_judge`, `metric_score`, `trajectory`, and `human_review`. Required checks determine the typed result; optional checks report evidence without gating. Product dimensions remain separate.
+Available checks: `shell`, `jq_path_contains`, `file_exists`, `output_contains`, `output_not_contains`, `llm_judge`, `metric_score`, `trajectory`, `human_review`, `discovery_finding` and `discovery_test_health`. Required checks determine the typed result; optional checks report evidence without gating. Product dimensions remain separate. The [discovery guide](./docs/AUTONOMOUS_TEST_DISCOVERY.md) documents the new check/evidence trust boundary.
 
 For prose checks, `llm_judge` requires `ANTHROPIC_API_KEY`; abstentions or unresolved votes remain unavailable rather than becoming a synthetic pass. Deterministic checks and `grade` do not require a model.
 
@@ -83,19 +84,20 @@ For prose checks, `llm_judge` requires `ANTHROPIC_API_KEY`; abstentions or unres
 
 ## Tests and reports
 
-Run the deterministic offline suite with:
+Run the local evaluation suites with:
 
 ```bash
 npm test
 ```
 
-The suite uses fixtures and stub runners; it does not measure live model quality, latency, or cost. Optional exports are available with `--report=junit:<path>` and `--report=sarif:<path>`.
+The suites use controlled fixtures and stub runners, with live Docker checks when their prerequisites are present; they do not measure live model quality, latency or cost. The separate discovery pilot does. Optional exports are available with `--report=junit:<path>` and `--report=sarif:<path>`.
 
 ## Documentation
 
 - [Documentation index](./docs/README.md)
 - [v0.5.0 design and migration contract](./docs/EVAL_HARNESS_V2.md)
 - [Runner contract](./docs/runners.md) and [LangGraph example](./examples/langgraph-runner/)
+- [Autonomous Test Discovery](./docs/AUTONOMOUS_TEST_DISCOVERY.md): operation, sandbox, review/replay and QA Factory/Jev gates
 - [Janus benchmark](./docs/JANUS_BENCHMARK.md): offline evidence and the no-go decision on a native adapter
 - [Security policy](./SECURITY.md), [versioning policy](./POLICY.md), and [known issues](./KNOWN_ISSUES.md)
 - [Changelog](./CHANGELOG.md) and [contributing guide](./CONTRIBUTING.md)

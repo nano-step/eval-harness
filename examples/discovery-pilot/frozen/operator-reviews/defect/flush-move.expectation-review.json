@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "flush-move",
+  "testSha256": "b50b47c420bf436eaa733b844bee4143a214f2014544770535f3e820f5e4e08d",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "b1e78d4eeddd9624e048e5b886dab69c3277048518dbae270448ec6b14fb0ffd",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "SPEC Movement explicitly excludes flush contact and requires one-unit penetration to collide. The three concrete movements assert those outcomes without relying on implementation details."
+}

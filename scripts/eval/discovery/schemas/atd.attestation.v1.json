@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.attestation/v1",
+  "title": "Autonomous Test Discovery attestation",
+  "description": "Signed with `ssh-keygen -Y sign -n atd-execution@v1` (attestation.json.sig). Verified by lib/atd_attest.sh::atd_verify. The trust label is chosen by the trusted runner environment, never by case or candidate JSON; the verifier picks the allowed-signers file from this label, so the local key can not claim more than local-same-user. Blocking gates may only rely on separate-user or ci-secret.",
+  "type": "object",
+  "required": ["schema", "runner", "ehRunId", "caseId", "candidateId", "executions", "candidateManifestSha256", "specSha256", "testSha256", "artifacts", "trust"],
+  "properties": {
+    "schema": { "const": "atd.attestation/v1" },
+    "kind": { "enum": ["differential", "mutation"] },
+    "runner": {
+      "type": "object",
+      "required": ["id", "scriptSha256", "policySha256"],
+      "properties": {
+        "id": { "const": "atd-sandbox" },
+        "scriptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "policySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "ehRunId": { "type": "string" },
+    "caseId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "executions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["executionId", "recordFile", "recordSha256"],
+        "properties": {
+          "executionId": { "type": "string" },
+          "side": { "enum": ["base", "candidate", "mutant"] },
+          "recordFile": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}\\.json$" },
+          "recordSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "differentialSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "candidateManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "specSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "testSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "findingSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^artifacts/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "trust": { "enum": ["ci-secret", "separate-user", "local-same-user"] },
+    "signedAt": { "type": "string" }
+  }
+}

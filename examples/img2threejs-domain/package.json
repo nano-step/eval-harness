@@ -1,0 +1,14 @@
+{
+  "name": "atd-img2threejs-domain-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/three": "0.169.0",
+    "esbuild": "0.25.12",
+    "playwright-core": "1.57.0",
+    "three": "0.169.0",
+    "typescript": "5.9.3"
+  }
+}

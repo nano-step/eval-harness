@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "zero-size-second-rect",
+  "testSha256": "4c153b43b91103e6de6dfad10111fa2b3d9f6b59c4730ec638b26efa1e4a3247",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "07a2e7dcfcd3ee3fdf03d7e1c011f7fd1c75dea96c3e0923dbb1c48cd1286b11",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "SPEC states a rectangle with zero width or height never overlaps, including when surrounded. Concrete second-argument and reversed-order cases exercise the distinct zero-width/zero-height conditions without adding requirements."
+}

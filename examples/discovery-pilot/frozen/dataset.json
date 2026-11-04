@@ -1,0 +1,191 @@
+{
+  "schema": "atd.frozen-dataset/v1",
+  "description": "Frozen actual-Sonnet proposals for the collision pilot; CI re-evaluates them with 0 fresh generation calls.",
+  "source": {
+    "archive": "atd-pilot-20261104-repair-1 (local pilot archive; not shipped)",
+    "operatorReviews": "atd-operator-reviews-20261104-repair-2 (PASS reviews of selected candidates only)",
+    "model": "anthropic/claude-sonnet-5-5",
+    "generated": 17,
+    "staticAccepted": 15,
+    "selected": 14,
+    "omitted": 1,
+    "operatorPassReviews": 9,
+    "freshGenerationCalls": 0
+  },
+  "context": {
+    "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+    "cleanCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+    "boundaryDefectCommit": "58010e9f9b27907f197003f47ac35ac8ecf52249",
+    "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+    "lockfileSha256": "5f478522928bd4eb22347d38af1e80e4d2106660445bfbdfef68b2a6e8873c20",
+    "framework": "vitest",
+    "fixtureBuilder": "examples/discovery-pilot/collision/build-fixture-repo.sh"
+  },
+  "rounds": [
+    {
+      "scenario": "clean",
+      "round": "round-001",
+      "strategy": "intent_aware",
+      "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+      "servedModels": [
+        "anthropic/claude-sonnet-5-5"
+      ],
+      "modelCalls": 1,
+      "generated": 5,
+      "staticAccepted": [
+        "axis-independence",
+        "invalid-rects-throw",
+        "overlap-properties",
+        "touching-edges-corners",
+        "zero-size-second-rect"
+      ],
+      "selected": [
+        "axis-independence",
+        "invalid-rects-throw",
+        "overlap-properties",
+        "touching-edges-corners",
+        "zero-size-second-rect"
+      ],
+      "notStaticAccepted": [],
+      "sourceSummarySha256": "c5efb8bf165850e94423d6c66e7ae065cb6d8090d1a88683d79e961dde1f23d6",
+      "sourceGenerationRequestSha256": "57e90fe5c5d15f650fe6e89b0e47d0451c83fbdff6e05b4bf37c638e45748789",
+      "approvals": null
+    },
+    {
+      "scenario": "clean",
+      "round": "round-002",
+      "strategy": "mutation_guided (with intent_aware, property_based)",
+      "candidateCommit": "4c5dafef7f5f977c3cd7d4cce0ae21c0d555ad79",
+      "servedModels": [
+        "anthropic/claude-sonnet-5-5"
+      ],
+      "modelCalls": 1,
+      "generated": 5,
+      "staticAccepted": [
+        "flush-move",
+        "invalid-rect-names",
+        "overlap-properties",
+        "touching-edges-corners",
+        "zero-size-second-rect"
+      ],
+      "selected": [
+        "flush-move",
+        "overlap-properties",
+        "touching-edges-corners",
+        "zero-size-second-rect"
+      ],
+      "notStaticAccepted": [],
+      "sourceSummarySha256": "7f56816f7c71e5b62c899a45c38234034b259ca36ffbf1ef96337acb8745603a",
+      "sourceGenerationRequestSha256": "991878d24e425cf54f64fc11f9820bbc9491d7fea6d2114ad264865738cfa422",
+      "approvals": "clean-guided"
+    },
+    {
+      "scenario": "defect",
+      "round": "round-001",
+      "strategy": "intent_aware",
+      "candidateCommit": "58010e9f9b27907f197003f47ac35ac8ecf52249",
+      "servedModels": [
+        "anthropic/claude-sonnet-5-5"
+      ],
+      "modelCalls": 1,
+      "generated": 7,
+      "staticAccepted": [
+        "flush-move",
+        "prop-reference",
+        "prop-touching",
+        "touch-corner",
+        "touch-x-edge"
+      ],
+      "selected": [
+        "flush-move",
+        "prop-reference",
+        "prop-touching",
+        "touch-corner",
+        "touch-x-edge"
+      ],
+      "notStaticAccepted": [
+        {
+          "candidateId": "touch-y-edge",
+          "validationCodes": [
+            "limit_exceeded"
+          ],
+          "testSha256": "b2456bf47292c181bf4520b2a1daaa610184af7dd0e0ab5b2a20f677e692178d",
+          "candidateManifestSha256": "49fc3b4b754b5dc1bb3c0cb65a5658f5621b3d1bb11a6c352db28f0279069b0b",
+          "reason": "rejected by the original deterministic validation (per-function candidate limit); not part of the frozen dataset"
+        },
+        {
+          "candidateId": "zero-second",
+          "validationCodes": [
+            "limit_exceeded"
+          ],
+          "testSha256": "451e5a25dcc1c822440c68d6d33abb96cbea03b08cb8ef9b91f5ee8844910285",
+          "candidateManifestSha256": "37c5a0ae62854c8a0c60a7c681cd9bc6fae82b55c419ccfe4878c6189f2fd728",
+          "reason": "rejected by the original deterministic validation (per-function candidate limit); not part of the frozen dataset"
+        }
+      ],
+      "sourceSummarySha256": "fcf66a10d7aa896a113f30e8663bee852ab91d23afc9bde4e3625beffe19f98c",
+      "sourceGenerationRequestSha256": "ee4f5c1aff07622a4b032ba3c3c5736d55eb8cbe316c933509b88211e30f662f",
+      "approvals": "defect"
+    }
+  ],
+  "omitted": [
+    {
+      "scenario": "clean",
+      "round": "round-002",
+      "candidateId": "invalid-rect-names",
+      "strategy": "mutation_guided",
+      "reason": "Main rejected this mutation-guided proposal on semantic review: it asserts that the error messages for an invalid first and an invalid second rectangle differ, but SPEC.md only promises a RangeError (no message wording or argument labels). Kept out of the runnable frozen dataset so no unsupported wording test is installed; the raw proposal remains in the original archive.",
+      "testFile": "test/invalid-rect-names.test.ts",
+      "testSha256": "2df85ac15b5d7283e3760eed634a90c455b77bffe79cab529f6a5a6baee54dd1",
+      "candidateManifestSha256": "0665223868e6c81c29ec170a1570e32d2be1c7f1c9aca4f7e1a4e83a45cb6224",
+      "sourceReviewVerdict": "FAIL",
+      "sourceReviewSha256": "cff934b2b9f846e2333d70a3703bf6f4d96e169ffd215ea35542cc15db22d31b"
+    }
+  ],
+  "files": {
+    "README.md": "9e390a889b74e98f4dedf378ec72a2d9b3882cd71dd1e2d686e5af442dcee573",
+    "clean/round-001/candidates/axis-independence/candidate.json": "46e2c7af4140d628e3f43558cbdee93bf3bc4fc92ce7c6ea049affcd53298c47",
+    "clean/round-001/candidates/axis-independence/tests/test/axis-independence.test.ts": "625991ce574c34bcf4ca1d7dfa67bbd31e3b846a8632e0455956a63cf13b27a4",
+    "clean/round-001/candidates/invalid-rects-throw/candidate.json": "e60667b1423b3b2653ba629e27646c34d41ca37d102710550e885f9abd09f2b2",
+    "clean/round-001/candidates/invalid-rects-throw/tests/test/invalid-rects-throw.test.ts": "1f7851aa6c61aacdebc55d9321d77a6dc209d1b50ac9bd41f15c7008755a8bd0",
+    "clean/round-001/candidates/overlap-properties/candidate.json": "b17f89fb29d91d5036d99b4ac60435b5bc295472f936968b010d1cbf2a2562e2",
+    "clean/round-001/candidates/overlap-properties/tests/test/overlap-properties.test.ts": "4704cee712f95eac6ed5460e852d67e470a87bb2ae47591c8afc8ac21f7815ff",
+    "clean/round-001/candidates/touching-edges-corners/candidate.json": "5e9c4603b62dec78a0fc89c46f15fead0441fbde0e36c1905e06a015f950bd31",
+    "clean/round-001/candidates/touching-edges-corners/tests/test/touching-edges-corners.test.ts": "167d5954b335ac8e2f198d7bb0e06275beb4a394b747810b46d6daac14a04c7c",
+    "clean/round-001/candidates/zero-size-second-rect/candidate.json": "d559f1663a2b6bd8514cda4ebaae6fc3c73157f86b39dd7b46b4232661542cd9",
+    "clean/round-001/candidates/zero-size-second-rect/tests/test/zero-size-second-rect.test.ts": "33e842aa1aa46e1386bbb23baab8712b213a724e9c1d6e491bf50b3c6c4b9b52",
+    "clean/round-001/generation-request.json": "57e90fe5c5d15f650fe6e89b0e47d0451c83fbdff6e05b4bf37c638e45748789",
+    "clean/round-001/round-summary.json": "934e93f4739c437c04e8932a8e66d3b65880d05969d6749c1f5cf6a97722af74",
+    "clean/round-002/candidates/flush-move/candidate.json": "0c22f69f8289a642402edea9ae73ebaa608339da74d9aa9c15b3e3127d2fc77a",
+    "clean/round-002/candidates/flush-move/tests/test/flush-move.test.ts": "781161ae87a4c7cdc35f674ea460ab7bd8c46b84f28df41c524123bbf9f3aea2",
+    "clean/round-002/candidates/overlap-properties/candidate.json": "e488406f1e31c40e302a38d3c41d86aa486aacac811207d82b1a7c8643d3fc2b",
+    "clean/round-002/candidates/overlap-properties/tests/test/overlap-properties.test.ts": "04ea6c866230ed8c53220019ecf21c7d12a2cb2ff9af3c32b74640feb4beee28",
+    "clean/round-002/candidates/touching-edges-corners/candidate.json": "a1c08929a77389e42dc935e6ab931a8a098dc358ef47fd0ee7b2b89e020b8c7e",
+    "clean/round-002/candidates/touching-edges-corners/tests/test/touching-edges-corners.test.ts": "2b100472d47f53c01cfc43688c8e6ed7014c593446ddda98fdfd5a257bcee3e1",
+    "clean/round-002/candidates/zero-size-second-rect/candidate.json": "07a2e7dcfcd3ee3fdf03d7e1c011f7fd1c75dea96c3e0923dbb1c48cd1286b11",
+    "clean/round-002/candidates/zero-size-second-rect/tests/test/zero-size-second-rect.test.ts": "4c153b43b91103e6de6dfad10111fa2b3d9f6b59c4730ec638b26efa1e4a3247",
+    "clean/round-002/generation-request.json": "991878d24e425cf54f64fc11f9820bbc9491d7fea6d2114ad264865738cfa422",
+    "clean/round-002/round-summary.json": "0ae24a9e106022e2ad0ee714639e67a961e1c7cc86d0a3c3a5e4069d31d2c97b",
+    "defect/round-001/candidates/flush-move/candidate.json": "b1e78d4eeddd9624e048e5b886dab69c3277048518dbae270448ec6b14fb0ffd",
+    "defect/round-001/candidates/flush-move/tests/test/flush-move.test.ts": "b50b47c420bf436eaa733b844bee4143a214f2014544770535f3e820f5e4e08d",
+    "defect/round-001/candidates/prop-reference/candidate.json": "3b05433c961ca68bb6533ea4c728f65c2468b37f51458e4b0d7652b37cd63ff2",
+    "defect/round-001/candidates/prop-reference/tests/test/prop-reference.test.ts": "fd4108537fb0dcb45aada3c9df349d6dc383400cd9ff420c4580bb06ef509658",
+    "defect/round-001/candidates/prop-touching/candidate.json": "fb7708d3cc4842d85147890e2d4eb1a74fc4b9ff49f078dd2689d1193199d391",
+    "defect/round-001/candidates/prop-touching/tests/test/prop-touching.test.ts": "0eb65fa541c0ca3f0d1ba82a529cec216d7c07a28ad13802f6d51dd7d492cea8",
+    "defect/round-001/candidates/touch-corner/candidate.json": "f14fa3c6a4b5e87e3f7befa21ea5927c607e9ce79978bb30d71957b83b6c06b3",
+    "defect/round-001/candidates/touch-corner/tests/test/touch-corner.test.ts": "91ccb899c1dd4fad837d8e2b55c74553ce797657386a5be3cb22f2f12efafb16",
+    "defect/round-001/candidates/touch-x-edge/candidate.json": "802bac32480cf0e199b73f8a032e236b4a7d62f6d6490e5d69ab15cfe642b7a1",
+    "defect/round-001/candidates/touch-x-edge/tests/test/touch-x-edge.test.ts": "cda012548af37973654002b3d332065a1c01ebaee185b6a8fbba4bb7767a35ed",
+    "defect/round-001/generation-request.json": "ee4f5c1aff07622a4b032ba3c3c5736d55eb8cbe316c933509b88211e30f662f",
+    "defect/round-001/round-summary.json": "4a7e72a367647db1ace82b5a9d1881548f91ade8866c2d0b0b4619d842a2614d",
+    "operator-reviews/clean-guided/flush-move.expectation-review.json": "d44f2a89e6c5113f510b9f2e433f857454010aec62745d6822f11d7341d57aa9",
+    "operator-reviews/clean-guided/overlap-properties.expectation-review.json": "b01faec8bedbdc679f50b18603370c0aaa404138b1140cc11188b2e5ed8dd3e6",
+    "operator-reviews/clean-guided/touching-edges-corners.expectation-review.json": "5b6cacd03f6b7cd48728dbb6c01c45a0ed0d2a5658c238da50a1d51d806b30f5",
+    "operator-reviews/clean-guided/zero-size-second-rect.expectation-review.json": "57befc407af1332003c550ed8733a0637ba803a6690dae5de9f3c6cda1a73ac3",
+    "operator-reviews/defect/flush-move.expectation-review.json": "57c3311080c672931075215998abd46aaee878c1dfad0bcedd1bd18699c3abb0",
+    "operator-reviews/defect/prop-reference.expectation-review.json": "c2bcaa04bbe1061970c87df0dfa53bf24ecec18e9c24701cf6a758a23365a643",
+    "operator-reviews/defect/prop-touching.expectation-review.json": "989c01f4505c72520a72cfeae216403ff84171f9e68c62ad5af1b45c1e120b01",
+    "operator-reviews/defect/touch-corner.expectation-review.json": "083a35dba50ee1f20377634c365e235cb1b178b2d66b92376abdca79ed6a2e21",
+    "operator-reviews/defect/touch-x-edge.expectation-review.json": "2bf00236b753f29057812b7be4ea7ccb82081495836b247f13143566cfe1c7c1"
+  }
+}

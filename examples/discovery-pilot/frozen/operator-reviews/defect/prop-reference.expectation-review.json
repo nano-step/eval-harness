@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "prop-reference",
+  "testSha256": "fd4108537fb0dcb45aada3c9df349d6dc383400cd9ff420c4580bb06ef509658",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "3b05433c961ca68bb6533ea4c728f65c2468b37f51458e4b0d7652b37cd63ff2",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "The reference computes positive-area intersection using strict max/min bounds and separately excludes every zero width/height, exactly SPEC Overlap. Small integer ranges avoid overflow and floating-point ambiguity."
+}

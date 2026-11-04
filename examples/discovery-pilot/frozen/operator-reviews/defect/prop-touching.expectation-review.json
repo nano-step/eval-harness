@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "candidateId": "prop-touching",
+  "testSha256": "0eb65fa541c0ca3f0d1ba82a529cec216d7c07a28ad13802f6d51dd7d492cea8",
+  "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+  "candidateManifestSha256": "fb7708d3cc4842d85147890e2d4eb1a74fc4b9ff49f078dd2689d1193199d391",
+  "verdict": "PASS",
+  "reviewer": "main-session/authorized-assistant",
+  "rubric_version": "spec-entailment-v1",
+  "timestamp": "2026-11-04T05:09:46Z",
+  "rationale": "Each constructed rectangle is separated or exactly flush on at least one axis, so SPEC half-open positive-area semantics require false in both argument orders. Finite bounded integer generation preserves those preconditions."
+}

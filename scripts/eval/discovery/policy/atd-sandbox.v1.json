@@ -1,0 +1,68 @@
+{
+  "schema": "atd.sandbox-policy/v1",
+  "id": "atd-sandbox/v1",
+  "image": {
+    "ref": "node@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da",
+    "digest": "sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da",
+    "nodeMajor": 22
+  },
+  "allowedImages": [
+    "node@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da"
+  ],
+  "trust": {
+    "default": "local-same-user",
+    "levels": ["local-same-user", "separate-user", "ci-secret"],
+    "blockingEligible": ["separate-user", "ci-secret"],
+    "note": "The default level is local-same-user: every process of the developer can read the local key, so such evidence is reporting-only and never authorizes blocking. A higher level requires an externally supplied key (ATD_SIGNING_KEY_FILE + ATD_ALLOWED_SIGNERS_FILE) and is never read from case or candidate JSON."
+  },
+  "user": "65534:65534",
+  "limits": {
+    "pidsLimit": 256,
+    "memoryBytes": 1073741824,
+    "cpus": 2,
+    "tmpMegabytes": 64,
+    "fileSizeBytes": 33554432,
+    "openFiles": 1024,
+    "defaultTimeoutSeconds": 120,
+    "maxTimeoutSeconds": 600,
+    "maxExportFiles": 20000,
+    "maxExportBytes": 268435456,
+    "maxTestFiles": 64,
+    "maxTestBytes": 1048576,
+    "maxReporterBytes": 4194304,
+    "maxLogBytes": 1048576,
+    "maxCandidateBytes": 262144,
+    "maxSpecBytes": 4194304,
+    "maxDependencyFiles": 400000,
+    "maxMutationSeconds": 1800,
+    "mutationWorkMegabytes": 512,
+    "defaultMaxMutants": 100,
+    "hardMaxMutants": 500,
+    "logMaxSize": "1m"
+  },
+  "env": {
+    "static": {
+      "CI": "1",
+      "TZ": "UTC",
+      "LANG": "C.UTF-8",
+      "NODE_ENV": "test"
+    },
+    "seeded": ["ATD_SEED", "FC_SEED"],
+    "imageDefaults": ["PATH", "HOSTNAME", "HOME", "NODE_VERSION", "YARN_VERSION"]
+  },
+  "frameworks": {
+    "node:test": { "extensions": [".js", ".mjs", ".cjs"], "requiresDependencies": false },
+    "vitest": { "extensions": [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"], "requiresDependencies": true, "entry": "node_modules/vitest/vitest.mjs", "testTimeoutMs": 20000 },
+    "stryker": { "requiresDependencies": true, "entry": "node_modules/@stryker-mutator/core/bin/stryker.js" }
+  },
+  "signing": {
+    "namespace": "atd-execution@v1",
+    "principalPrefix": "atd-runner-"
+  },
+  "residualRisks": [
+    "The container kernel is shared with the Docker VM; this is a process-level, not VM-grade, boundary.",
+    "Generated test code runs as the same uid as the in-container reporter and could forge reporter files; the signed record binds the test hash so a forged outcome is attributable, and classification still requires spec support and repeated fresh executions.",
+    "The output mount is a host directory bounded by RLIMIT_FSIZE, the pids limit and the host deadline, not by a disk quota.",
+    "Docker's default seccomp profile is assumed."
+  ]
+}

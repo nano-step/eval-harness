@@ -1,0 +1,28 @@
+diff --git a/src/collision.ts b/src/collision.ts
+index e6edf40..56bf026 100644
+--- a/src/collision.ts
++++ b/src/collision.ts
+@@ -12,18 +12,17 @@ function assertValid(rect: Rect, name: string): void {
+   }
+ }
+ 
++function intervalsOverlap(aStart: number, aSize: number, bStart: number, bSize: number): boolean {
++  return aStart < bStart + bSize && bStart < aStart + aSize;
++}
++
+ export function overlaps(a: Rect, b: Rect): boolean {
+   assertValid(a, "a");
+   assertValid(b, "b");
+   if (a.width === 0 || a.height === 0 || b.width === 0 || b.height === 0) {
+     return false;
+   }
+-  return (
+-    a.x < b.x + b.width &&
+-    b.x < a.x + a.width &&
+-    a.y < b.y + b.height &&
+-    b.y < a.y + a.height
+-  );
++  return intervalsOverlap(a.x, a.width, b.x, b.width) && intervalsOverlap(a.y, a.height, b.y, b.height);
+ }
+ 
+ export function translate(rect: Rect, dx: number, dy: number): Rect {

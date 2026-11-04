@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "atd.repair-request/v1",
+  "title": "atd.repair-request/v1 — bounded repair request for a VERIFIED, independently attested regression",
+  "description": "Produced by repair-request.mjs for Jev's existing repair loop (budget.maxRepairRounds). Only VERIFIED_REGRESSION findings with valid evidence, a stability-bound reproduction, spec support and a ci-secret or separate-user attestation produce a request. Attempts are counted per (targetFile, requirement quote); an exhausted regression becomes a human-review record instead. Readers MUST ignore unknown fields.",
+  "type": "object",
+  "required": ["schema", "findingId", "resultsSha256", "classification", "targetFile", "reproducer", "failureExcerpt", "requirementRef", "regressionKey", "attempt", "maxAttempts", "attestationTrust", "instruction"],
+  "properties": {
+    "schema": { "const": "atd.repair-request/v1" },
+    "findingId": { "type": "string" },
+    "ehRunId": { "type": ["string", "null"] },
+    "resultsSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "classification": { "const": "VERIFIED_REGRESSION" },
+    "targetFile": { "type": "string", "minLength": 1 },
+    "reproducer": { "type": ["object", "null"] },
+    "failureExcerpt": { "type": "string", "maxLength": 4200, "description": "At most 4096 bytes of candidate-side failure evidence with ANSI and control characters removed." },
+    "failureExcerptSource": { "type": ["string", "null"] },
+    "requirementRef": {
+      "type": "object",
+      "required": ["specSha256", "quote"],
+      "properties": { "specSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "quote": { "type": "string", "minLength": 1 } }
+    },
+    "regressionKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "candidateId": { "type": ["string", "null"] },
+    "baseCommit": { "type": ["string", "null"] },
+    "candidateCommit": { "type": ["string", "null"] },
+    "attestationTrust": { "enum": ["ci-secret", "separate-user"] },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "instruction": { "type": "string" }
+  }
+}

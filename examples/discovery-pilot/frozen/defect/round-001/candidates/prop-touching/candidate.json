@@ -1,0 +1,25 @@
+{
+  "schema": "atd.test-candidate/v1",
+  "id": "prop-touching",
+  "strategy": "property_based",
+  "targetFile": "src/collision.ts",
+  "testFile": "test/prop-touching.test.ts",
+  "framework": "vitest",
+  "testSha256": "0eb65fa541c0ca3f0d1ba82a529cec216d7c07a28ad13802f6d51dd7d492cea8",
+  "requirementRef": {
+    "specSha256": "ee9b97732d84bc82bb0071a7c5dd2e7d43fabffb9a8bb98bff744efa48598544",
+    "quote": "Rectangles that only touch along an edge or at a corner do not overlap."
+  },
+  "failureHypothesis": "For any generated pair of rectangles placed exactly edge-adjacent, overlaps might wrongly return true.",
+  "provenance": {
+    "baseCommit": "cad8e018893d7e7d99c701a1de358d14863e0ae3",
+    "candidateCommit": "58010e9f9b27907f197003f47ac35ac8ecf52249",
+    "sourceDiffHash": "36050225fedbeb99fefd9450cdeb2321cd8e3897d8482e1b40928369212a25af",
+    "generatorRole": "intent_aware_generator",
+    "promptSha256": "648404267fbe621f61ff641804f59e87cef466b08cf5e25f1854d880a65c1438",
+    "modelId": "anthropic/claude-sonnet-5-5"
+  },
+  "trust": "untrusted",
+  "seed": 4242,
+  "runs": 200
+}

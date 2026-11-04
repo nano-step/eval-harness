@@ -1,0 +1,6 @@
+{
+  "description": "Jev test command + budget for the collision pilot. Warn-only by default; Jev's existing maxRepairRounds bounds repair.",
+  "testCommand": "@@EVAL_HARNESS_ROOT@@/scripts/eval/discovery/jev-gate.sh --repo=@@FIXTURE_REPO@@ --base=@@BASE_COMMIT@@ --candidate=HEAD --spec=@@FIXTURE_REPO@@/SPEC.md --dependencies=@@DEPENDENCIES@@ --out=@@WORK@@/gate --state-dir=@@WORK@@/eval-state --mode=warn --max-attempts=3",
+  "maxRepairRounds": 3,
+  "blockingEnablement": "pass --mode=block explicitly; it only fails on verified regressions with a ci-secret or separate-user attestation"
+}

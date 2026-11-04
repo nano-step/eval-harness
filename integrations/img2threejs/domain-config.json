@@ -1,0 +1,10 @@
+{
+  "target": "src/scene.ts",
+  "expected": {
+    "worldBounds": {"min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5], "tolerance": 0.0001},
+    "nodes": [{"path": "Scene/Box", "parent": "Scene"}, {"path": "Scene/Box/RootBone", "parent": "Scene/Box"}],
+    "clips": [{"name": "Turn", "duration": 1, "tolerance": 0.0001}],
+    "publicRigContract": "rig-payload.alpha",
+    "rigUnit": "meter"
+  }
+}

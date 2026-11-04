@@ -4,6 +4,25 @@ All notable changes to `@nano-step/eval-harness` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- Autonomous Test Discovery modules for deterministic diff/risk targeting, bounded intent-aware generation requests, untrusted candidate admission and maintained scoped Stryker mutation.
+- `atd-sandbox` runner with independent revision exports, digest-pinned Docker confinement, structured framework outcomes, SSH-signed evidence and fail-closed admission.
+- `discovery_finding` and optional `discovery_test_health` checks integrated with existing stability sampling, grading manifests, typed results, JUnit/SARIF and baseline behavior.
+- Bounded OMP/Sonnet generation and frozen-candidate review replay, executable QA Factory oracle integration and a warn-only Jev test-command gate with bounded, independently verified repair requests.
+- Isolated collision benchmark fixtures, dependency setup, live pilot commands and an operational/security guide.
+- Optional img2threejs product evaluation using a pinned confined Playwright browser, native Three.js structure checks, GLB round-trip validation and separately approved visual baselines.
+
+### Fixed
+- Generic runner stability samples re-execute instead of regrading copied evidence; stale or failed respawns cannot appear independently reproduced.
+- Discovery confirmation preserves existing baseline failures and rejects tampering, missing identities, environment mismatches, runtime faults and unreviewed expectations.
+- Revision export/test overlays reject symlink traversal before host writes and refuse oversized blobs before buffering their contents.
+- Downstream repair/QA/gate consumers recompute findings rather than trusting result JSON; replay admission rejects injected or alternate manifest-selected host checks, and promotion requires the original trusted review.
+- Generated tests retain their revision-relative placement independently of the host input directory, so nested relative imports resolve without rewriting test source.
+- Mutation overlays honor rejected or invalid expectation reviews rather than accepting unsupported assertions merely because the test passes before mutation.
+- Mutation execution verifies signed baseline/current raw evidence before computing counts; unsigned baselines are refused before Docker execution. Derived report-consumer hardening remains tracked in the audit.
+
 ## [0.5.0] — 2026-09-30
 
 ### Added

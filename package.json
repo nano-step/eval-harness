@@ -29,6 +29,8 @@
     "standards/",
     "docs/",
     "examples/",
+    "integrations/",
+    "autonomous-test-discovery-audit.md",
     "pricing.json",
     "README.md",
     "CHANGELOG.md",

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atd.test-candidate/v1",
+  "title": "Autonomous Test Discovery generated test candidate (UNTRUSTED data)",
+  "description": "Stored as candidate.json beside the candidate test files. Produced by trusted materialization of model output; validated by scripts/eval/discovery/candidates.mjs. Unknown properties are rejected because the document describes untrusted input.",
+  "type": "object",
+  "required": ["schema", "id", "strategy", "targetFile", "testFile", "framework", "testSha256", "requirementRef", "failureHypothesis", "provenance", "trust"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "atd.test-candidate/v1" },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "minLength": 1, "maxLength": 96 },
+    "strategy": { "enum": ["intent_aware", "mutation_guided", "property_based"] },
+    "targetFile": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "testFile": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "framework": { "enum": ["vitest", "node:test"] },
+    "testSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "requirementRef": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["specSha256", "quote"],
+          "additionalProperties": false,
+          "properties": {
+            "specSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "quote": { "type": "string", "minLength": 1, "maxLength": 2000 }
+          }
+        }
+      ]
+    },
+    "failureHypothesis": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "killsMutantIds": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+    },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+    "runs": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "provenance": {
+      "type": "object",
+      "required": ["baseCommit", "candidateCommit", "sourceDiffHash", "generatorRole", "promptSha256"],
+      "additionalProperties": false,
+      "properties": {
+        "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceDiffHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "modelId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "modelRevision": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "generatorRole": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "promptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "trust": { "const": "untrusted" }
+  }
+}

@@ -10,6 +10,7 @@ source "$_SCORE_LIB_DIR/yq-shim.sh"
 source "$_SCORE_LIB_DIR/llm_judge.sh"
 source "$_SCORE_LIB_DIR/autofix.sh"
 source "$_SCORE_LIB_DIR/extended_graders.sh"
+source "$_SCORE_LIB_DIR/discovery_grader.sh"
 
 # Usage: run_check <check_yaml_path> <workdir> <transcript_jsonl>
 # Returns a single check-result JSON to stdout. Exit 0 always; pass/fail in JSON.
@@ -53,13 +54,21 @@ run_check() {
     output_not_contains)
       result="$(score_output_not_contains "$check_file" "$transcript")" ;;
     llm_judge)
-      result="$(score_llm_judge "$check_file" "$workdir" "$transcript")" ;;
+      if [[ "$(yq -r '.discovery_review // false' "$check_file" 2>/dev/null || echo false)" == "true" ]]; then
+        result="$(score_discovery_review "$check_file" "$workdir" "$transcript")"
+      else
+        result="$(score_llm_judge "$check_file" "$workdir" "$transcript")"
+      fi ;;
     metric_score)
       result="$(score_metric_score "$check_file" "$workdir")" ;;
     trajectory)
       result="$(score_trajectory "$check_file" "$workdir")" ;;
     human_review)
       result="$(score_human_review "$check_file" "$workdir")" ;;
+    discovery_finding)
+      result="$(score_discovery_finding "$check_file" "$workdir")" ;;
+    discovery_test_health)
+      result="$(score_discovery_test_health "$check_file" "$workdir")" ;;
     *)
       result="$(jq -n --arg kind "$kind" '{
         kind: $kind,
@@ -490,7 +499,7 @@ run_all_checks() {
     }' > "$out"
 }
 
-export -f run_check run_all_checks score_shell score_jq_path_contains score_file_exists score_output_contains score_output_not_contains score_metric_score score_trajectory score_human_review decorate_check_result
+export -f run_check run_all_checks score_shell score_jq_path_contains score_file_exists score_output_contains score_output_not_contains score_metric_score score_trajectory score_human_review decorate_check_result score_discovery_finding score_discovery_test_health score_discovery_review
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
